@@ -1,0 +1,14 @@
+[Unit]
+Description=Tunnel Server
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/tunneling
+ExecStart=/opt/tunneling/bin/server -addr :80
+Restart=always
+RestartSec=2
+User=root
+
+[Install]
+WantedBy=multi-user.target

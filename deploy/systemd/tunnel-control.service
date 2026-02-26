@@ -1,0 +1,15 @@
+[Unit]
+Description=Tunnel Control API (Supabase)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/tunneling
+EnvironmentFile=/opt/tunneling/control.env
+ExecStart=/opt/tunneling/bin/control -addr :18100
+Restart=always
+RestartSec=2
+User=root
+
+[Install]
+WantedBy=multi-user.target

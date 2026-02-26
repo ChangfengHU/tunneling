@@ -1,0 +1,310 @@
+:root {
+  --bg: #f2f5f8;
+  --panel: #ffffff;
+  --ink: #102033;
+  --muted: #607285;
+  --line: #d8e0e8;
+  --brand: #0a7ea4;
+  --brand-ink: #ffffff;
+  --ok: #2f9d6a;
+  --warn: #d97706;
+  --error: #b42318;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: radial-gradient(circle at top right, #d8ebf7 0%, #f2f5f8 60%);
+  color: var(--ink);
+  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.page {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 18px;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.topbar h1 {
+  margin: 0;
+  font-size: 30px;
+}
+
+.topbar p {
+  margin: 6px 0 0;
+  color: var(--muted);
+}
+
+.alert {
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+
+.alert.ok {
+  background: #e9f7ef;
+  color: #0f6e45;
+  border: 1px solid #9ed8ba;
+}
+
+.alert.error {
+  background: #feefee;
+  color: var(--error);
+  border: 1px solid #f4b4af;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 330px 1fr;
+  gap: 14px;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px;
+  box-shadow: 0 8px 30px rgba(23, 42, 59, 0.08);
+}
+
+.panel h2,
+.panel h3 {
+  margin: 0 0 10px;
+}
+
+.form {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.form label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+input {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  width: 100%;
+}
+
+button {
+  border: 1px solid transparent;
+  background: var(--brand);
+  color: var(--brand-ink);
+  border-radius: 8px;
+  padding: 8px 11px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+button.ghost {
+  background: #f7fbfe;
+  border-color: #c7dced;
+  color: #155e78;
+}
+
+.list {
+  display: grid;
+  gap: 8px;
+}
+
+.listItem {
+  text-align: left;
+  border: 1px solid var(--line);
+  background: #fafcfe;
+  color: var(--ink);
+  border-radius: 8px;
+  padding: 8px;
+}
+
+.listItem strong {
+  display: block;
+}
+
+.listItem small {
+  display: block;
+  color: var(--muted);
+  margin-top: 3px;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.listItem.active {
+  border-color: #8bc5de;
+  background: #eaf6fd;
+}
+
+.right {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  background: #fcfdff;
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+code {
+  background: #f2f7fb;
+  border: 1px solid #d2e0ea;
+  border-radius: 6px;
+  padding: 2px 6px;
+}
+
+pre {
+  margin: 6px 0;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: #f7fafc;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.inlineForm {
+  display: grid;
+  grid-template-columns: 2fr 1.3fr auto auto;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+}
+
+.checkbox input {
+  width: 18px;
+  height: 18px;
+}
+
+.tableWrap {
+  overflow: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 700px;
+}
+
+th,
+td {
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  padding: 8px;
+  font-size: 14px;
+  vertical-align: middle;
+}
+
+th {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.actions {
+  display: flex;
+  gap: 6px;
+}
+
+.logs {
+  max-height: 320px;
+  overflow: auto;
+  display: grid;
+  gap: 6px;
+}
+
+.logRow {
+  display: grid;
+  grid-template-columns: auto auto auto 1fr;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 8px;
+  align-items: center;
+  background: #f9fcff;
+}
+
+.level {
+  font-size: 12px;
+  border-radius: 20px;
+  padding: 2px 7px;
+  color: #fff;
+  font-weight: 700;
+  min-width: 54px;
+  text-align: center;
+}
+
+.level.info {
+  background: #0f7aa1;
+}
+
+.level.warn {
+  background: var(--warn);
+}
+
+.level.error {
+  background: var(--error);
+}
+
+@media (max-width: 1100px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .inlineForm {
+    grid-template-columns: 1fr;
+  }
+
+  .logRow {
+    grid-template-columns: 1fr;
+  }
+}
+

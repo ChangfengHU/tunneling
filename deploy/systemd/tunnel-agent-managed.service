@@ -1,0 +1,15 @@
+[Unit]
+Description=Tunnel Agent (Control-Managed Routes)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/tunneling
+EnvironmentFile=/opt/tunneling/agent.env
+ExecStart=/opt/tunneling/bin/agent -server ${AGENT_SERVER_WS} -token ${TUNNEL_TOKEN} -route-sync-url ${AGENT_ROUTE_SYNC_URL} -tunnel-id ${TUNNEL_ID} -tunnel-token ${TUNNEL_TOKEN} -admin-addr 127.0.0.1:17001 -config /opt/tunneling/agent-config.json
+Restart=always
+RestartSec=2
+User=root
+
+[Install]
+WantedBy=multi-user.target

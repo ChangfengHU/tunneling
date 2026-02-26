@@ -1,0 +1,14 @@
+[Unit]
+Description=Tunnel Agent
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/tunneling
+ExecStart=/opt/tunneling/bin/agent -server ws://YOUR_SERVER_IP:9000/connect -token YOUR_TOKEN -admin-addr 127.0.0.1:7000
+Restart=always
+RestartSec=2
+User=root
+
+[Install]
+WantedBy=multi-user.target

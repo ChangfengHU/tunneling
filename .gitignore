@@ -1,0 +1,9 @@
+# Binaries
+/bin/
+
+# Local agent config
+agent-config.json
+*.tmp
+
+# macOS
+.DS_Store
