@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+if [ -z "${BASH_VERSION:-}" ]; then
+  exec /usr/bin/env bash "$0" "$@"
+fi
 set -euo pipefail
 
 usage() {
@@ -264,6 +267,101 @@ api_delete() {
   fi
   rm -f "${body_file}"
   return 0
+}
+
+list_project_sibling_states() {
+  local root="$1"
+  local project_name="$2"
+  local user_id="$3"
+  local base_domain="$4"
+  local hostname="$5"
+  local current_port="$6"
+  python3 - "${root}" "${project_name}" "${user_id}" "${base_domain}" "${hostname}" "${current_port}" <<'PY'
+import glob
+import json
+import os
+import sys
+
+root, project_name, user_id, base_domain, hostname, current_port = sys.argv[1:]
+pattern = os.path.join(root, "*", "state.json")
+for path in glob.glob(pattern):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        continue
+
+    if str(data.get("project_name", "")) != project_name:
+        continue
+    if str(data.get("user_id", "")) != user_id:
+        continue
+    if str(data.get("base_domain", "")) != base_domain:
+        continue
+
+    port = str(data.get("project_port", ""))
+    if not port or port == str(current_port):
+        continue
+
+    old_host = str(data.get("hostname", "")).strip()
+    if hostname and old_host and old_host != hostname:
+        continue
+
+    state_dir = os.path.dirname(path)
+    fields = [
+        state_dir,
+        port,
+        str(data.get("tunnel_id", "")),
+        old_host,
+        str(data.get("target", "")),
+        str(data.get("agent_admin_addr", "")),
+    ]
+    print("\t".join(fields))
+PY
+}
+
+cleanup_other_ports_for_same_project() {
+  local line state_dir old_port old_tunnel old_host old_target old_admin old_admin_port tmp_file
+  tmp_file="$(mktemp)"
+  list_project_sibling_states "${STATE_ROOT}" "${PROJECT_NAME}" "${USER_ID}" "${BASE_DOMAIN}" "${HOSTNAME}" "${PROJECT_PORT}" >"${tmp_file}" || true
+  while IFS=$'\t' read -r state_dir old_port old_tunnel old_host old_target old_admin; do
+    [[ -n "${state_dir}" ]] || continue
+    echo "[cleanup] remove old port state dir=${state_dir} port=${old_port}"
+
+    stop_by_pid_file "${state_dir}/app.pid"
+    stop_by_pid_file "${state_dir}/agent.pid"
+    if [[ "${old_port}" =~ ^[0-9]{2,5}$ ]]; then
+      stop_by_tcp_port "${old_port}"
+    fi
+    old_admin_port="${old_admin##*:}"
+    if [[ "${old_admin_port}" =~ ^[0-9]{2,5}$ ]]; then
+      stop_by_tcp_port "${old_admin_port}"
+    fi
+
+    if [[ -n "${old_tunnel}" && -n "${old_host}" ]]; then
+      if [[ -z "${old_target}" ]]; then
+        old_target="127.0.0.1:${old_port}"
+      fi
+      old_payload="$(python3 - "${old_tunnel}" "${old_host}" "${old_target}" <<'PY'
+import json
+import sys
+tunnel_id, hostname, target = sys.argv[1:4]
+print(json.dumps({
+    "tunnel_id": tunnel_id,
+    "hostname": hostname,
+    "target": target,
+    "enabled": False,
+}))
+PY
+)"
+      api_post "${CONTROL_API_BASE}/api/routes" "${old_payload}" >/dev/null 2>/dev/null || true
+      api_delete "${CONTROL_API_BASE}/api/tunnels/${old_tunnel}" >/dev/null || true
+    fi
+
+    if [[ "${state_dir}" == "${STATE_ROOT}/"* ]]; then
+      rm -rf "${state_dir}" || true
+    fi
+  done < "${tmp_file}"
+  rm -f "${tmp_file}"
 }
 
 parse_package_name() {
@@ -608,7 +706,6 @@ print(json.dumps({
     "hostname": hostname,
     "target": target,
     "enabled": False,
-    "force": True,
 }))
 PY
 )"
@@ -697,6 +794,10 @@ if [[ "${DOMAIN_MODE}" == "fixed" ]]; then
   fi
   HOSTNAME="${SUBDOMAIN}.${BASE_DOMAIN}"
   PUBLIC_URL="http://${HOSTNAME}"
+fi
+
+if [[ "${DOMAIN_MODE}" == "fixed" ]]; then
+  cleanup_other_ports_for_same_project
 fi
 
 created_tunnel_id=""
