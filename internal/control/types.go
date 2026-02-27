@@ -3,10 +3,12 @@ package control
 import "tunneling/internal/protocol"
 
 type Tunnel struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Token     string `json:"token,omitempty"`
-	CreatedAt string `json:"created_at,omitempty"`
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Token      string `json:"token,omitempty"`
+	OwnerID    string `json:"owner_id,omitempty"`
+	ProjectKey string `json:"project_key,omitempty"`
+	CreatedAt  string `json:"created_at,omitempty"`
 }
 
 type Route struct {

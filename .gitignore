@@ -1,9 +1,11 @@
 # Binaries
 /bin/
+/dist/
 
 # Local agent config
 agent-config.json
 *.tmp
+scripts/start-*.sh
 
 # macOS
 .DS_Store

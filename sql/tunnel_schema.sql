@@ -4,8 +4,13 @@ create table if not exists public.tunnel_tunnels (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   token text not null unique,
+  owner_id text,
+  project_key text,
   created_at timestamptz not null default now()
 );
+
+alter table public.tunnel_tunnels add column if not exists owner_id text;
+alter table public.tunnel_tunnels add column if not exists project_key text;
 
 create table if not exists public.tunnel_routes (
   id uuid primary key default gen_random_uuid(),
@@ -19,6 +24,7 @@ create table if not exists public.tunnel_routes (
 
 create index if not exists tunnel_routes_tunnel_id_idx on public.tunnel_routes(tunnel_id);
 create index if not exists tunnel_routes_hostname_idx on public.tunnel_routes(hostname);
+create index if not exists tunnel_tunnels_owner_project_idx on public.tunnel_tunnels(owner_id, project_key);
 
 create or replace function public.tunnel_set_updated_at()
 returns trigger

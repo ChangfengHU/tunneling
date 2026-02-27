@@ -11,6 +11,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -41,6 +42,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/healthz", s.handleHealthz)
 	mux.HandleFunc("/api/tunnels", s.handleTunnels)
 	mux.HandleFunc("/api/routes", s.handleRoutes)
+	mux.HandleFunc("/api/sessions/register", s.handleSessionRegister)
 	mux.HandleFunc("/api/tunnels/", s.handleTunnelByID)
 	mux.HandleFunc("/api/logs", s.handleLogs)
 	mux.HandleFunc("/agent/routes", s.handleAgentRoutes)
@@ -159,24 +161,172 @@ func (s *Server) handleRoutes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	route, err := s.supabase.UpsertRoute(ctx, Route{
-		TunnelID: tunnelID,
-		Hostname: hostname,
-		Target:   target,
-		Enabled:  enabled,
-	})
-	if err != nil {
+	existing, err := s.supabase.GetRouteByHostname(ctx, hostname)
+	if err != nil && !errors.Is(err, ErrNotFound) {
 		errorJSON(w, http.StatusBadGateway, err.Error())
-		s.events.Add("error", "route.upsert.failed", tunnelID, err.Error())
+		s.events.Add("error", "route.lookup.failed", tunnelID, err.Error())
 		return
+	}
+
+	var route Route
+	if err == nil {
+		if existing.TunnelID != tunnelID {
+			errorJSON(w, http.StatusConflict, "hostname is already bound to another tunnel")
+			return
+		}
+		route, err = s.supabase.UpdateRoute(ctx, existing.ID, target, enabled)
+		if err != nil {
+			errorJSON(w, http.StatusBadGateway, err.Error())
+			s.events.Add("error", "route.update.failed", tunnelID, err.Error())
+			return
+		}
+	} else {
+		route, err = s.supabase.CreateRoute(ctx, Route{
+			TunnelID: tunnelID,
+			Hostname: hostname,
+			Target:   target,
+			Enabled:  enabled,
+		})
+		if err != nil {
+			status := http.StatusBadGateway
+			if isRouteConflictError(err) {
+				status = http.StatusConflict
+			}
+			errorJSON(w, status, err.Error())
+			s.events.Add("error", "route.create.failed", tunnelID, err.Error())
+			return
+		}
 	}
 	s.events.Add("info", "route.upserted", tunnelID, fmt.Sprintf("%s => %s enabled=%t", route.Hostname, route.Target, route.Enabled))
 	writeJSON(w, http.StatusOK, map[string]any{"route": route})
 }
 
+type registerSessionRequest struct {
+	UserID     string `json:"user_id"`
+	Project    string `json:"project"`
+	Target     string `json:"target"`
+	BaseDomain string `json:"base_domain"`
+	Subdomain  string `json:"subdomain,omitempty"`
+	Enabled    *bool  `json:"enabled,omitempty"`
+}
+
+func (s *Server) handleSessionRegister(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req registerSessionRequest
+	if err := decodeJSON(r.Body, &req); err != nil {
+		errorJSON(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+
+	userID := strings.TrimSpace(req.UserID)
+	project := strings.TrimSpace(req.Project)
+	if userID == "" {
+		errorJSON(w, http.StatusBadRequest, "user_id is required")
+		return
+	}
+	if project == "" {
+		errorJSON(w, http.StatusBadRequest, "project is required")
+		return
+	}
+
+	target, err := normalizeTarget(req.Target)
+	if err != nil {
+		errorJSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	baseDomain, err := normalizeBaseDomain(req.BaseDomain)
+	if err != nil {
+		errorJSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	enabled := true
+	if req.Enabled != nil {
+		enabled = *req.Enabled
+	}
+
+	label := sanitizeDNSLabel(req.Subdomain)
+	if label == "" {
+		label = sanitizeDNSLabel(project)
+	}
+	if label == "" {
+		label = "app"
+	}
+	ownerLabel := sanitizeDNSLabel(userID)
+	if ownerLabel == "" {
+		ownerLabel = "user"
+	}
+
+	token, err := randomToken(32)
+	if err != nil {
+		errorJSON(w, http.StatusInternalServerError, "generate token failed")
+		return
+	}
+	tunnelName := fmt.Sprintf("%s-%s-%s", label, ownerLabel, randomSuffix(4))
+	projectKey := sanitizeProjectKey(project)
+
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+
+	tunnel, err := s.supabase.CreateTunnelWithMeta(ctx, tunnelName, token, userID, projectKey)
+	if err != nil {
+		errorJSON(w, http.StatusBadGateway, err.Error())
+		s.events.Add("error", "session.register.tunnel_failed", "", err.Error())
+		return
+	}
+
+	var route Route
+	var hostname string
+	createErr := error(nil)
+	const maxRouteAttempts = 6
+	for i := 0; i < maxRouteAttempts; i++ {
+		hostname = fmt.Sprintf("%s-%s.%s", label, randomSuffix(6), baseDomain)
+		route, createErr = s.supabase.CreateRoute(ctx, Route{
+			TunnelID: tunnel.ID,
+			Hostname: hostname,
+			Target:   target,
+			Enabled:  enabled,
+		})
+		if createErr == nil {
+			break
+		}
+		if !isRouteConflictError(createErr) {
+			break
+		}
+	}
+	if createErr != nil {
+		_ = s.supabase.DeleteTunnelByID(ctx, tunnel.ID)
+		status := http.StatusBadGateway
+		if isRouteConflictError(createErr) {
+			status = http.StatusConflict
+			createErr = errors.New("failed to allocate unique hostname, retry later")
+		}
+		errorJSON(w, status, createErr.Error())
+		s.events.Add("error", "session.register.route_failed", tunnel.ID, createErr.Error())
+		return
+	}
+
+	s.events.Add("info", "session.registered", tunnel.ID, fmt.Sprintf("%s => %s (%s)", route.Hostname, route.Target, userID))
+	writeJSON(w, http.StatusOK, map[string]any{
+		"tunnel":        tunnel,
+		"route":         route,
+		"public_url":    "http://" + hostname,
+		"agent_command": s.agentCommand(tunnel.ID, tunnel.Token),
+	})
+}
+
 func (s *Server) handleTunnelByID(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/api/tunnels/")
 	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) == 1 && parts[0] != "" && r.Method == http.MethodDelete {
+		s.handleDeleteTunnel(w, r, parts[0])
+		return
+	}
 	if len(parts) < 2 || parts[0] == "" {
 		http.NotFound(w, r)
 		return
@@ -193,6 +343,23 @@ func (s *Server) handleTunnelByID(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.NotFound(w, r)
 	}
+}
+
+func (s *Server) handleDeleteTunnel(w http.ResponseWriter, r *http.Request, tunnelID string) {
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	if _, err := s.supabase.GetTunnelByID(ctx, tunnelID); err != nil {
+		errorJSON(w, http.StatusNotFound, "tunnel not found")
+		return
+	}
+	if err := s.supabase.DeleteTunnelByID(ctx, tunnelID); err != nil {
+		errorJSON(w, http.StatusBadGateway, err.Error())
+		s.events.Add("error", "tunnel.delete.failed", tunnelID, err.Error())
+		return
+	}
+	s.events.Add("info", "tunnel.deleted", tunnelID, "deleted tunnel and routes")
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "tunnel_id": tunnelID})
 }
 
 func (s *Server) handleListTunnelRoutes(w http.ResponseWriter, r *http.Request, tunnelID string) {
@@ -340,6 +507,73 @@ func normalizeTarget(target string) (string, error) {
 		return "", errors.New("target must include port, e.g. 127.0.0.1:3000")
 	}
 	return t, nil
+}
+
+func normalizeBaseDomain(baseDomain string) (string, error) {
+	host := strings.TrimSpace(strings.ToLower(baseDomain))
+	host = strings.TrimSuffix(host, ".")
+	if host == "" {
+		return "", errors.New("base_domain is required")
+	}
+	if strings.Contains(host, "/") || strings.Contains(host, ":") || strings.Contains(host, " ") {
+		return "", errors.New("base_domain must be a plain domain, e.g. vyibc.com")
+	}
+	if !strings.Contains(host, ".") {
+		return "", errors.New("base_domain must include a dot, e.g. vyibc.com")
+	}
+	return host, nil
+}
+
+var nonDNSLabelChars = regexp.MustCompile(`[^a-z0-9-]+`)
+
+func sanitizeDNSLabel(input string) string {
+	value := strings.TrimSpace(strings.ToLower(input))
+	if value == "" {
+		return ""
+	}
+	value = strings.ReplaceAll(value, "_", "-")
+	value = nonDNSLabelChars.ReplaceAllString(value, "-")
+	value = strings.Trim(value, "-")
+	value = strings.ReplaceAll(value, "--", "-")
+	if len(value) > 28 {
+		value = strings.Trim(value[:28], "-")
+	}
+	return value
+}
+
+func sanitizeProjectKey(input string) string {
+	value := strings.TrimSpace(input)
+	if value == "" {
+		return ""
+	}
+	if len(value) > 120 {
+		return value[:120]
+	}
+	return value
+}
+
+func randomSuffix(length int) string {
+	if length <= 0 {
+		length = 6
+	}
+	const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
+	out := make([]byte, length)
+	buf := make([]byte, length)
+	if _, err := rand.Read(buf); err != nil {
+		return fmt.Sprintf("%d", time.Now().UnixNano())[:length]
+	}
+	for i := range out {
+		out[i] = alphabet[int(buf[i])%len(alphabet)]
+	}
+	return string(out)
+}
+
+func isRouteConflictError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "status=409") || strings.Contains(msg, "duplicate key")
 }
 
 func mustWSURL(baseURL string) string {

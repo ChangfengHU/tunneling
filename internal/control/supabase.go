@@ -19,6 +19,8 @@ type SupabaseClient struct {
 	httpClient *http.Client
 }
 
+var ErrNotFound = errors.New("not found")
+
 func NewSupabaseClient(baseURL, apiKey string) (*SupabaseClient, error) {
 	baseURL = strings.TrimSpace(strings.TrimRight(baseURL, "/"))
 	apiKey = strings.TrimSpace(apiKey)
@@ -50,9 +52,26 @@ func (c *SupabaseClient) ListTunnels(ctx context.Context) ([]Tunnel, error) {
 }
 
 func (c *SupabaseClient) CreateTunnel(ctx context.Context, name, token string) (Tunnel, error) {
+	return c.CreateTunnelWithMeta(ctx, name, token, "", "")
+}
+
+func (c *SupabaseClient) CreateTunnelWithMeta(ctx context.Context, name, token, ownerID, projectKey string) (Tunnel, error) {
+	basePayload := map[string]any{
+		"name":  name,
+		"token": token,
+	}
 	payload := map[string]any{
 		"name":  name,
 		"token": token,
+	}
+	useMeta := false
+	if strings.TrimSpace(ownerID) != "" {
+		useMeta = true
+		payload["owner_id"] = strings.TrimSpace(ownerID)
+	}
+	if strings.TrimSpace(projectKey) != "" {
+		useMeta = true
+		payload["project_key"] = strings.TrimSpace(projectKey)
 	}
 
 	query := url.Values{}
@@ -64,7 +83,14 @@ func (c *SupabaseClient) CreateTunnel(ctx context.Context, name, token string) (
 
 	var rows []Tunnel
 	if err := c.requestJSON(ctx, http.MethodPost, "/rest/v1/tunnel_tunnels", query, headers, payload, &rows); err != nil {
-		return Tunnel{}, err
+		if useMeta && isMissingColumnError(err) {
+			rows = nil
+			if err2 := c.requestJSON(ctx, http.MethodPost, "/rest/v1/tunnel_tunnels", query, headers, basePayload, &rows); err2 != nil {
+				return Tunnel{}, err2
+			}
+		} else {
+			return Tunnel{}, err
+		}
 	}
 	if len(rows) == 0 {
 		return Tunnel{}, errors.New("create tunnel returned empty result")
@@ -124,6 +150,80 @@ func (c *SupabaseClient) UpsertRoute(ctx context.Context, route Route) (Route, e
 		return Route{}, errors.New("upsert route returned empty result")
 	}
 	return rows[0], nil
+}
+
+func (c *SupabaseClient) CreateRoute(ctx context.Context, route Route) (Route, error) {
+	query := url.Values{}
+	query.Set("select", "id,tunnel_id,hostname,target,enabled,created_at,updated_at")
+
+	headers := map[string]string{
+		"Prefer": "return=representation",
+	}
+
+	payload := map[string]any{
+		"tunnel_id": route.TunnelID,
+		"hostname":  route.Hostname,
+		"target":    route.Target,
+		"enabled":   route.Enabled,
+	}
+
+	var rows []Route
+	if err := c.requestJSON(ctx, http.MethodPost, "/rest/v1/tunnel_routes", query, headers, payload, &rows); err != nil {
+		return Route{}, err
+	}
+	if len(rows) == 0 {
+		return Route{}, errors.New("create route returned empty result")
+	}
+	return rows[0], nil
+}
+
+func (c *SupabaseClient) UpdateRoute(ctx context.Context, routeID string, target string, enabled bool) (Route, error) {
+	query := url.Values{}
+	query.Set("id", "eq."+routeID)
+	query.Set("select", "id,tunnel_id,hostname,target,enabled,created_at,updated_at")
+
+	headers := map[string]string{
+		"Prefer": "return=representation",
+	}
+
+	payload := map[string]any{
+		"target":  target,
+		"enabled": enabled,
+	}
+
+	var rows []Route
+	if err := c.requestJSON(ctx, http.MethodPatch, "/rest/v1/tunnel_routes", query, headers, payload, &rows); err != nil {
+		return Route{}, err
+	}
+	if len(rows) == 0 {
+		return Route{}, ErrNotFound
+	}
+	return rows[0], nil
+}
+
+func (c *SupabaseClient) GetRouteByHostname(ctx context.Context, hostname string) (Route, error) {
+	query := url.Values{}
+	query.Set("select", "id,tunnel_id,hostname,target,enabled,created_at,updated_at")
+	query.Set("hostname", "eq."+hostname)
+	query.Set("limit", "1")
+
+	var rows []Route
+	if err := c.requestJSON(ctx, http.MethodGet, "/rest/v1/tunnel_routes", query, nil, nil, &rows); err != nil {
+		return Route{}, err
+	}
+	if len(rows) == 0 {
+		return Route{}, ErrNotFound
+	}
+	return rows[0], nil
+}
+
+func (c *SupabaseClient) DeleteTunnelByID(ctx context.Context, tunnelID string) error {
+	query := url.Values{}
+	query.Set("id", "eq."+tunnelID)
+	headers := map[string]string{
+		"Prefer": "return=minimal",
+	}
+	return c.requestJSON(ctx, http.MethodDelete, "/rest/v1/tunnel_tunnels", query, headers, nil, nil)
 }
 
 func (c *SupabaseClient) ListRoutesByTunnel(ctx context.Context, tunnelID string) ([]Route, error) {
@@ -202,4 +302,13 @@ func (c *SupabaseClient) requestJSON(ctx context.Context, method, path string, q
 		return fmt.Errorf("decode response: %w", err)
 	}
 	return nil
+}
+
+func isMissingColumnError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "could not find the") && strings.Contains(msg, "column") ||
+		(strings.Contains(msg, "column") && strings.Contains(msg, "does not exist"))
 }

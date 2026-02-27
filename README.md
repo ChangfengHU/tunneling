@@ -79,6 +79,12 @@ http://127.0.0.1:7000
 -- 文件：sql/tunnel_schema.sql
 ```
 
+如果你是从旧版本升级，执行增量脚本：
+
+```sql
+-- 文件：sql/tunnel_schema_v2.sql
+```
+
 2. 启动 control 服务：
 
 ```bash
@@ -105,6 +111,21 @@ curl -sS -X POST http://127.0.0.1:18100/api/routes \
   -d '{"tunnel_id":"<tunnel_id>","hostname":"demo1.example.com","target":"127.0.0.1:3000"}'
 ```
 
+也可以直接使用会话注册（推荐给 CLI 启动脚本）：
+
+```bash
+curl -sS -X POST http://127.0.0.1:18100/api/sessions/register \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "user_id":"u-demo",
+    "project":"todo-katong",
+    "base_domain":"vyibc.com",
+    "target":"host.docker.internal:5318"
+  }'
+```
+
+返回内容包含：自动创建的 `tunnel`、随机子域名 `route`、`public_url`、`agent_command`。
+
 5. 本地 agent 只带 `tunnel_id` + `tunnel_token` 启动（由 control 返回命令）：
 
 ```bash
@@ -123,9 +144,11 @@ go run ./cmd/agent \
 
 - `GET /api/tunnels`: tunnel 列表
 - `POST /api/tunnels`: 创建 tunnel
-- `POST /api/routes`: 新增或更新映射
+- `POST /api/routes`: 新增或更新映射（同 hostname 仅允许同 tunnel 更新，避免串用）
+- `POST /api/sessions/register`: 一次性注册会话（自动创建 tunnel + 随机子域名映射）
 - `GET /api/tunnels/{id}/routes`: tunnel 下映射
 - `GET /api/tunnels/{id}/command`: agent 启动命令
+- `DELETE /api/tunnels/{id}`: 删除 tunnel（级联删除路由）
 - `GET /api/logs?tunnel_id={id}&limit=200`: 控制面日志
 
 ## Web 控制台（Next.js）
@@ -235,6 +258,37 @@ cp deploy/examples/agent.env.example "$HOME/.tunneling-agent/agent.env"
 
 - 脚本会自动读取 `$HOME/.tunneling-agent/agent.env`，并支持重复执行（会重建容器）。
 - 若 agent 跑在 Docker，映射目标建议用 `host.docker.internal:<port>`，不要用 `127.0.0.1:<port>`。
+
+### 新项目一键接入脚本
+
+脚本：`scripts/project-tunnel.sh`
+
+目标：
+
+- 放到任意项目目录直接执行
+- 自动发现项目名/端口
+- 自动注册/复用固定域名
+- 自动下载对应平台 agent 并启动
+
+最小依赖：
+
+- `node` / `npm` / `python3` / `curl`
+
+用法：
+
+```bash
+chmod +x ./project-tunnel.sh
+./project-tunnel.sh start
+./project-tunnel.sh status
+./project-tunnel.sh stop
+```
+
+可选：
+
+- `DOMAIN_MODE=fixed|random`（默认 `fixed`）
+- `SUBDOMAIN=my-app`（固定模式自定义子域名前缀）
+- `AGENT_GITHUB_REPO=ChangfengHU/tunneling`
+- `AGENT_VERSION=latest`
 
 ## DNS 与访问
 
