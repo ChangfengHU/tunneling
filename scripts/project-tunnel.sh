@@ -388,6 +388,40 @@ except Exception:
 PY
 }
 
+detect_start_cmd() {
+  local pkg_file="$1"
+  local port="$2"
+  python3 - "${pkg_file}" "${port}" <<'PY'
+import json
+import os
+import sys
+
+pkg_file, port = sys.argv[1], sys.argv[2]
+if not os.path.exists(pkg_file):
+    print("")
+    raise SystemExit(0)
+try:
+    with open(pkg_file, "r", encoding="utf-8") as f:
+        obj = json.load(f)
+except Exception:
+    print("")
+    raise SystemExit(0)
+
+scripts = obj.get("scripts", {}) if isinstance(obj, dict) else {}
+if not isinstance(scripts, dict):
+    scripts = {}
+
+if "start" in scripts:
+    print(f"npm run start -- -p {port}")
+elif "preview" in scripts:
+    print(f"npm run preview -- --host 127.0.0.1 --port {port}")
+elif "dev" in scripts:
+    print(f"npm run dev -- --host 127.0.0.1 --port {port}")
+else:
+    print("")
+PY
+}
+
 port_from_file() {
   local f="$1"
   [[ -f "${f}" ]] || return 1
@@ -639,7 +673,14 @@ fi
 FORCE_NEW_DOMAIN="${FORCE_NEW_DOMAIN:-0}"
 
 BUILD_CMD="${BUILD_CMD:-npm run build}"
-START_CMD="${START_CMD:-npm run start -- -p ${PROJECT_PORT}}"
+if [[ -n "${START_CMD:-}" ]]; then
+  START_CMD="${START_CMD}"
+else
+  START_CMD="$(detect_start_cmd "${PROJECT_DIR}/package.json" "${PROJECT_PORT}")"
+  if [[ -z "${START_CMD}" ]]; then
+    START_CMD="npm run start -- -p ${PROJECT_PORT}"
+  fi
+fi
 SKIP_BUILD="${SKIP_BUILD:-0}"
 
 AGENT_SERVER="${AGENT_SERVER:-ws://152.32.214.95/connect}"
