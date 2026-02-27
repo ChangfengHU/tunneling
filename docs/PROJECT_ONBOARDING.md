@@ -18,6 +18,14 @@ chmod +x ./project-tunnel.sh
 ./project-tunnel.sh start
 ```
 
+指定端口启动（两种方式）：
+
+```bash
+./project-tunnel.sh start --port 5318
+# 或
+./project-tunnel.sh start 5318
+```
+
 默认会自动：
 
 - 从当前目录读取项目名和端口（`package.json.name`、`.tunnel-port`、`.env`）

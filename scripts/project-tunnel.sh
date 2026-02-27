@@ -5,6 +5,9 @@ usage() {
   cat <<'USAGE'
 Usage:
   ./project-tunnel.sh start
+  ./project-tunnel.sh start --port 5318
+  ./project-tunnel.sh start -p 5318
+  ./project-tunnel.sh start 5318
   ./project-tunnel.sh stop
   ./project-tunnel.sh status
 
@@ -44,6 +47,77 @@ if [[ "${cmd}" == "-h" || "${cmd}" == "--help" ]]; then
   usage
   exit 0
 fi
+shift || true
+
+cli_project_port=""
+cli_project_name=""
+cli_user_id=""
+cli_subdomain=""
+cli_base_domain=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -p|--port)
+      if [[ $# -lt 2 ]]; then
+        echo "ERROR: $1 requires a value" >&2
+        usage
+        exit 1
+      fi
+      cli_project_port="$2"
+      shift 2
+      ;;
+    --project-name)
+      if [[ $# -lt 2 ]]; then
+        echo "ERROR: $1 requires a value" >&2
+        usage
+        exit 1
+      fi
+      cli_project_name="$2"
+      shift 2
+      ;;
+    --user-id)
+      if [[ $# -lt 2 ]]; then
+        echo "ERROR: $1 requires a value" >&2
+        usage
+        exit 1
+      fi
+      cli_user_id="$2"
+      shift 2
+      ;;
+    --subdomain)
+      if [[ $# -lt 2 ]]; then
+        echo "ERROR: $1 requires a value" >&2
+        usage
+        exit 1
+      fi
+      cli_subdomain="$2"
+      shift 2
+      ;;
+    --base-domain)
+      if [[ $# -lt 2 ]]; then
+        echo "ERROR: $1 requires a value" >&2
+        usage
+        exit 1
+      fi
+      cli_base_domain="$2"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      if [[ -z "${cli_project_port}" && "$1" =~ ^[0-9]{2,5}$ ]]; then
+        cli_project_port="$1"
+        shift
+        continue
+      fi
+      echo "ERROR: unknown arg '$1'" >&2
+      usage
+      exit 1
+      ;;
+  esac
+done
 
 require_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -417,9 +491,19 @@ require_cmd npm
 
 PROJECT_DIR="${PROJECT_DIR:-$(pwd)}"
 _pkg_name="$(parse_package_name "${PROJECT_DIR}/package.json" || true)"
-PROJECT_NAME="${PROJECT_NAME:-${_pkg_name:-$(basename "${PROJECT_DIR}")}}"
+if [[ -n "${PROJECT_NAME:-}" ]]; then
+  PROJECT_NAME="${PROJECT_NAME}"
+elif [[ -n "${cli_project_name}" ]]; then
+  PROJECT_NAME="${cli_project_name}"
+else
+  PROJECT_NAME="${_pkg_name:-$(basename "${PROJECT_DIR}")}"
+fi
 
-if [[ -z "${PROJECT_PORT:-}" ]]; then
+if [[ -n "${PROJECT_PORT:-}" ]]; then
+  PROJECT_PORT="${PROJECT_PORT}"
+elif [[ -n "${cli_project_port}" ]]; then
+  PROJECT_PORT="${cli_project_port}"
+elif [[ -z "${PROJECT_PORT:-}" ]]; then
   if [[ -f "${PROJECT_DIR}/.tunnel-port" ]]; then
     PROJECT_PORT="$(head -n1 "${PROJECT_DIR}/.tunnel-port" | tr -d '[:space:]')"
   else
@@ -431,11 +515,29 @@ if [[ -z "${PROJECT_PORT:-}" ]]; then
   fi
 fi
 
-USER_ID="${USER_ID:-$(id -un 2>/dev/null || whoami || echo u-local)}"
-BASE_DOMAIN="${BASE_DOMAIN:-vyibc.com}"
+if [[ -n "${USER_ID:-}" ]]; then
+  USER_ID="${USER_ID}"
+elif [[ -n "${cli_user_id}" ]]; then
+  USER_ID="${cli_user_id}"
+else
+  USER_ID="$(id -un 2>/dev/null || whoami || echo u-local)"
+fi
+if [[ -n "${BASE_DOMAIN:-}" ]]; then
+  BASE_DOMAIN="${BASE_DOMAIN}"
+elif [[ -n "${cli_base_domain}" ]]; then
+  BASE_DOMAIN="${cli_base_domain}"
+else
+  BASE_DOMAIN="vyibc.com"
+fi
 CONTROL_API_BASE="${CONTROL_API_BASE:-http://152.32.214.95:3002/control}"
 DOMAIN_MODE="${DOMAIN_MODE:-fixed}"
-SUBDOMAIN="${SUBDOMAIN:-}"
+if [[ -n "${SUBDOMAIN:-}" ]]; then
+  SUBDOMAIN="${SUBDOMAIN}"
+elif [[ -n "${cli_subdomain}" ]]; then
+  SUBDOMAIN="${cli_subdomain}"
+else
+  SUBDOMAIN=""
+fi
 FORCE_NEW_DOMAIN="${FORCE_NEW_DOMAIN:-0}"
 
 BUILD_CMD="${BUILD_CMD:-npm run build}"
