@@ -591,6 +591,30 @@ AGENT_STATUS_URL="http://${AGENT_ADMIN_ADDR}/api/status"
 mkdir -p "${STATE_DIR}"
 
 if [[ "${cmd}" == "stop" ]]; then
+  if [[ -f "${STATE_FILE}" ]]; then
+    stop_tunnel_id="$(state_get tunnel_id || true)"
+    stop_hostname="$(state_get hostname || true)"
+    stop_target="$(state_get target || true)"
+    if [[ -z "${stop_target}" ]]; then
+      stop_target="${TARGET}"
+    fi
+    if [[ -n "${stop_tunnel_id}" && -n "${stop_hostname}" ]]; then
+      stop_payload="$(python3 - "${stop_tunnel_id}" "${stop_hostname}" "${stop_target}" <<'PY'
+import json
+import sys
+tunnel_id, hostname, target = sys.argv[1:4]
+print(json.dumps({
+    "tunnel_id": tunnel_id,
+    "hostname": hostname,
+    "target": target,
+    "enabled": False,
+    "force": True,
+}))
+PY
+)"
+      api_post "${CONTROL_API_BASE}/api/routes" "${stop_payload}" >/dev/null || true
+    fi
+  fi
   stop_by_pid_file "${APP_PID_FILE}"
   stop_by_pid_file "${AGENT_PID_FILE}"
   stop_by_tcp_port "${PROJECT_PORT}"
@@ -723,6 +747,7 @@ print(json.dumps({
     "hostname": hostname,
     "target": target,
     "enabled": True,
+    "force": True,
 }))
 PY
 )"

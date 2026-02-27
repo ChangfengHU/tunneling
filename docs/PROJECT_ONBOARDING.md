@@ -32,6 +32,7 @@ chmod +x ./project-tunnel.sh
 - 使用固定域名模式：`<project>-<user>.vyibc.com`
 - 自动下载 agent（平台：`darwin-arm64` / `darwin-amd64` / `linux-amd64` / `windows-amd64`）
 - 启动项目和 agent，并输出 `public_url`
+- 若 hostname 已存在，会自动强制更新映射到当前 tunnel/端口（支持动态改端口）
 
 常用命令：
 
@@ -39,6 +40,8 @@ chmod +x ./project-tunnel.sh
 ./project-tunnel.sh status
 ./project-tunnel.sh stop
 ```
+
+`stop` 会自动把该 hostname 置为 `enabled=false`（下线映射），避免服务已停但域名仍可路由到旧地址。
 
 ## 3. 一次性注册 Tunnel + 子域名（手动方式）
 

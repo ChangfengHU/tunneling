@@ -118,6 +118,7 @@ type upsertRouteRequest struct {
 	Hostname string `json:"hostname"`
 	Target   string `json:"target"`
 	Enabled  *bool  `json:"enabled,omitempty"`
+	Force    bool   `json:"force,omitempty"`
 }
 
 func (s *Server) handleRoutes(w http.ResponseWriter, r *http.Request) {
@@ -171,7 +172,18 @@ func (s *Server) handleRoutes(w http.ResponseWriter, r *http.Request) {
 	var route Route
 	if err == nil {
 		if existing.TunnelID != tunnelID {
-			errorJSON(w, http.StatusConflict, "hostname is already bound to another tunnel")
+			if !req.Force {
+				errorJSON(w, http.StatusConflict, "hostname is already bound to another tunnel")
+				return
+			}
+			route, err = s.supabase.UpdateRouteBinding(ctx, existing.ID, tunnelID, target, enabled)
+			if err != nil {
+				errorJSON(w, http.StatusBadGateway, err.Error())
+				s.events.Add("error", "route.rebind.failed", tunnelID, err.Error())
+				return
+			}
+			s.events.Add("warn", "route.rebound", tunnelID, fmt.Sprintf("%s moved from %s to %s", route.Hostname, existing.TunnelID, tunnelID))
+			writeJSON(w, http.StatusOK, map[string]any{"route": route})
 			return
 		}
 		route, err = s.supabase.UpdateRoute(ctx, existing.ID, target, enabled)

@@ -178,6 +178,10 @@ func (c *SupabaseClient) CreateRoute(ctx context.Context, route Route) (Route, e
 }
 
 func (c *SupabaseClient) UpdateRoute(ctx context.Context, routeID string, target string, enabled bool) (Route, error) {
+	return c.UpdateRouteBinding(ctx, routeID, "", target, enabled)
+}
+
+func (c *SupabaseClient) UpdateRouteBinding(ctx context.Context, routeID string, tunnelID string, target string, enabled bool) (Route, error) {
 	query := url.Values{}
 	query.Set("id", "eq."+routeID)
 	query.Set("select", "id,tunnel_id,hostname,target,enabled,created_at,updated_at")
@@ -186,9 +190,9 @@ func (c *SupabaseClient) UpdateRoute(ctx context.Context, routeID string, target
 		"Prefer": "return=representation",
 	}
 
-	payload := map[string]any{
-		"target":  target,
-		"enabled": enabled,
+	payload := map[string]any{"target": target, "enabled": enabled}
+	if strings.TrimSpace(tunnelID) != "" {
+		payload["tunnel_id"] = strings.TrimSpace(tunnelID)
 	}
 
 	var rows []Route
