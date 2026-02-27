@@ -1,0 +1,7 @@
+interface:
+  display_name: "Project Tunnel Bootstrap"
+  short_description: "One-step install/start for project tunnel domain"
+  default_prompt: "Use $project-tunnel-bootstrap to create project-tunnel.sh in this project and start tunneling on a specific port."
+
+policy:
+  allow_implicit_invocation: true
