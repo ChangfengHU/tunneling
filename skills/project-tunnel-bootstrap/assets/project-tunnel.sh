@@ -11,6 +11,8 @@ Usage:
   ./project-tunnel.sh start --port 5318
   ./project-tunnel.sh start -p 5318
   ./project-tunnel.sh start 5318
+  ./project-tunnel.sh start --port 5180 --startsh scripts/dev-restart.sh
+  ./project-tunnel.sh start --start-cmd "npm run dev -- --host 127.0.0.1 --port 5180"
   ./project-tunnel.sh stop
   ./project-tunnel.sh status
 
@@ -31,6 +33,7 @@ Optional env vars:
 - FORCE_NEW_DOMAIN=1
 - BUILD_CMD='npm run build'
 - START_CMD='npm run start -- -p 3000'
+- START_SH='scripts/dev-restart.sh'
 - SKIP_BUILD=1
 
 Agent auto-download:
@@ -58,6 +61,10 @@ cli_project_name=""
 cli_user_id=""
 cli_subdomain=""
 cli_base_domain=""
+cli_start_sh=""
+cli_start_cmd=""
+cli_build_cmd=""
+cli_skip_build=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -106,6 +113,37 @@ while [[ $# -gt 0 ]]; do
       cli_base_domain="$2"
       shift 2
       ;;
+    --startsh|--start-sh)
+      if [[ $# -lt 2 ]]; then
+        echo "ERROR: $1 requires a value" >&2
+        usage
+        exit 1
+      fi
+      cli_start_sh="$2"
+      shift 2
+      ;;
+    --start-cmd)
+      if [[ $# -lt 2 ]]; then
+        echo "ERROR: $1 requires a value" >&2
+        usage
+        exit 1
+      fi
+      cli_start_cmd="$2"
+      shift 2
+      ;;
+    --build-cmd)
+      if [[ $# -lt 2 ]]; then
+        echo "ERROR: $1 requires a value" >&2
+        usage
+        exit 1
+      fi
+      cli_build_cmd="$2"
+      shift 2
+      ;;
+    --skip-build)
+      cli_skip_build="1"
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -142,6 +180,10 @@ sanitize_key() {
   local out
   out="$(echo "${input}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9_.-]+/-/g; s/^-+//; s/-+$//')"
   echo "${out:0:90}"
+}
+
+shell_quote() {
+  printf '%q' "$1"
 }
 
 json_get() {
@@ -596,6 +638,8 @@ write_runner_scripts() {
 #!/usr/bin/env bash
 set -euo pipefail
 export PATH='${PATH_VALUE}'
+export PORT='${PROJECT_PORT}'
+export PROJECT_PORT='${PROJECT_PORT}'
 cd '${PROJECT_DIR}'
 exec ${START_CMD}
 EOF_APP
@@ -674,8 +718,34 @@ else
 fi
 FORCE_NEW_DOMAIN="${FORCE_NEW_DOMAIN:-0}"
 
-BUILD_CMD="${BUILD_CMD:-npm run build}"
-if [[ -n "${START_CMD:-}" ]]; then
+if [[ -n "${BUILD_CMD:-}" ]]; then
+  BUILD_CMD="${BUILD_CMD}"
+elif [[ -n "${cli_build_cmd}" ]]; then
+  BUILD_CMD="${cli_build_cmd}"
+else
+  BUILD_CMD="npm run build"
+fi
+
+if [[ -n "${cli_start_sh}" ]]; then
+  START_SH="${cli_start_sh}"
+elif [[ -n "${START_SH:-}" ]]; then
+  START_SH="${START_SH}"
+else
+  START_SH=""
+fi
+
+if [[ -n "${START_SH}" ]]; then
+  if [[ "${START_SH}" != /* ]]; then
+    START_SH="${PROJECT_DIR}/${START_SH}"
+  fi
+  if [[ ! -f "${START_SH}" ]]; then
+    echo "ERROR: START_SH not found: ${START_SH}" >&2
+    exit 1
+  fi
+  START_CMD="bash $(shell_quote "${START_SH}") $(shell_quote "${PROJECT_PORT}")"
+elif [[ -n "${cli_start_cmd}" ]]; then
+  START_CMD="${cli_start_cmd}"
+elif [[ -n "${START_CMD:-}" ]]; then
   START_CMD="${START_CMD}"
 else
   START_CMD="$(detect_start_cmd "${PROJECT_DIR}/package.json" "${PROJECT_PORT}")"
@@ -683,7 +753,12 @@ else
     START_CMD="npm run start -- -p ${PROJECT_PORT}"
   fi
 fi
-SKIP_BUILD="${SKIP_BUILD:-0}"
+
+if [[ -n "${cli_skip_build}" ]]; then
+  SKIP_BUILD="1"
+else
+  SKIP_BUILD="${SKIP_BUILD:-0}"
+fi
 
 AGENT_SERVER="${AGENT_SERVER:-ws://152.32.214.95/connect}"
 AGENT_ROUTE_SYNC_URL="${AGENT_ROUTE_SYNC_URL:-http://152.32.214.95/_tunnel/agent/routes}"
