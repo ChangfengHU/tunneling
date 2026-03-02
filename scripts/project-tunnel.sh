@@ -894,15 +894,23 @@ fi
 ensure_agent_binary
 
 # ---------------------------------------------------------------
-# Machine-level shared tunnel
-# All projects on the same machine share ONE tunnel.
-# The machine ID is generated once and stored permanently.
+# Machine-level shared tunnel + shared agent
+# All projects on the same machine share ONE tunnel and ONE agent.
+# Machine ID is generated once and stored permanently.
 # ---------------------------------------------------------------
-MACHINE_TUNNEL_DIR="${HOME}/.tunneling"
-MACHINE_ID_FILE="${MACHINE_TUNNEL_DIR}/machine_id"
-MACHINE_TUNNEL_FILE="${MACHINE_TUNNEL_DIR}/machine_tunnel.json"
+MACHINE_DIR="${HOME}/.tunneling"
+MACHINE_ID_FILE="${MACHINE_DIR}/machine_id"
+MACHINE_STATE_FILE="${MACHINE_DIR}/machine_state.json"
+MACHINE_AGENT_DIR="${MACHINE_DIR}/machine-agent"
+MACHINE_AGENT_LOG="${MACHINE_AGENT_DIR}/agent.log"
+MACHINE_AGENT_PID="${MACHINE_AGENT_DIR}/agent.pid"
+MACHINE_AGENT_CONFIG="${MACHINE_AGENT_DIR}/config.json"
+MACHINE_AGENT_RUNNER="${MACHINE_AGENT_DIR}/run-agent.sh"
+MACHINE_AGENT_ADMIN_ADDR="127.0.0.1:17000"
+MACHINE_AGENT_ADMIN_PORT="17000"
+MACHINE_AGENT_STATUS_URL="http://${MACHINE_AGENT_ADMIN_ADDR}/api/status"
 
-mkdir -p "${MACHINE_TUNNEL_DIR}"
+mkdir -p "${MACHINE_DIR}" "${MACHINE_AGENT_DIR}"
 
 # Generate a stable machine ID (once only)
 if [[ ! -f "${MACHINE_ID_FILE}" ]]; then
@@ -910,11 +918,11 @@ if [[ ! -f "${MACHINE_ID_FILE}" ]]; then
 fi
 MACHINE_ID="$(cat "${MACHINE_ID_FILE}" | tr -d '[:space:]')"
 
-# Read existing shared tunnel from machine tunnel file
-machine_tunnel_read() {
+# Read a field from machine state file
+machine_state_read() {
   local key="$1"
-  [[ -f "${MACHINE_TUNNEL_FILE}" ]] || return 1
-  python3 - "${MACHINE_TUNNEL_FILE}" "${key}" <<'PY'
+  [[ -f "${MACHINE_STATE_FILE}" ]] || return 1
+  python3 - "${MACHINE_STATE_FILE}" "${key}" <<'PY'
 import json, sys, os
 f, k = sys.argv[1], sys.argv[2]
 if not os.path.exists(f): raise SystemExit(1)
@@ -925,17 +933,58 @@ print(v)
 PY
 }
 
-machine_tunnel_write() {
-  python3 - "${MACHINE_TUNNEL_FILE}" "${MACHINE_ID}" "${USER_ID}" "$1" "$2" <<'PY'
+# Write full machine state
+machine_state_write() {
+  # Args: tunnel_id tunnel_token
+  python3 - "${MACHINE_STATE_FILE}" "${MACHINE_ID}" "${USER_ID}" \
+    "$1" "$2" "${MACHINE_AGENT_ADMIN_ADDR}" <<'PY'
 import json, sys, os
 from datetime import datetime, timezone
-f, machine_id, user_id, tunnel_id, tunnel_token = sys.argv[1:]
-os.makedirs(os.path.dirname(f), exist_ok=True)
+f, machine_id, user_id, tunnel_id, tunnel_token, agent_admin_addr = sys.argv[1:]
+os.makedirs(os.path.dirname(os.path.abspath(f)), exist_ok=True)
 data = {"machine_id": machine_id, "user_id": user_id,
         "tunnel_id": tunnel_id, "tunnel_token": tunnel_token,
+        "agent_admin_addr": agent_admin_addr,
         "updated_at": datetime.now(timezone.utc).isoformat()}
 open(f, "w").write(json.dumps(data, indent=2))
 PY
+}
+
+# Check if machine agent is alive
+is_machine_agent_running() {
+  # Check by PID file
+  local pid
+  pid="$(cat "${MACHINE_AGENT_PID}" 2>/dev/null | tr -d '[:space:]' || true)"
+  if [[ -n "${pid}" ]] && is_pid_running "${pid}"; then
+    return 0
+  fi
+  # Fallback: check if something is listening on the admin port
+  local port_pid
+  port_pid="$(pid_on_tcp_port "${MACHINE_AGENT_ADMIN_PORT}" || true)"
+  if [[ -n "${port_pid}" ]]; then
+    echo "${port_pid}" > "${MACHINE_AGENT_PID}"
+    return 0
+  fi
+  return 1
+}
+
+# Write machine agent runner script
+write_machine_agent_runner() {
+  local tid="$1" ttoken="$2"
+  cat > "${MACHINE_AGENT_RUNNER}" <<EOF_RUNNER
+#!/usr/bin/env bash
+set -euo pipefail
+export PATH='${PATH_VALUE}'
+exec '${AGENT_BIN}' \\
+  -server '${AGENT_SERVER}' \\
+  -token '${ttoken}' \\
+  -route-sync-url '${AGENT_ROUTE_SYNC_URL}' \\
+  -tunnel-id '${tid}' \\
+  -tunnel-token '${ttoken}' \\
+  -admin-addr '${MACHINE_AGENT_ADMIN_ADDR}' \\
+  -config '${MACHINE_AGENT_CONFIG}'
+EOF_RUNNER
+  chmod +x "${MACHINE_AGENT_RUNNER}"
 }
 
 TUNNEL_ID=""
@@ -943,22 +992,20 @@ TUNNEL_TOKEN=""
 HOSTNAME=""
 PUBLIC_URL=""
 
-# 1. Try to reuse the machine-level shared tunnel
-SHARED_TUNNEL_ID="$(machine_tunnel_read tunnel_id || true)"
-SHARED_TUNNEL_TOKEN="$(machine_tunnel_read tunnel_token || true)"
+# Read machine-level shared tunnel (always takes priority over per-project state)
+SHARED_TUNNEL_ID="$(machine_state_read tunnel_id || true)"
+SHARED_TUNNEL_TOKEN="$(machine_state_read tunnel_token || true)"
 
-if [[ -f "${STATE_FILE}" && "${FORCE_NEW_DOMAIN}" != "1" ]]; then
+if [[ -n "${SHARED_TUNNEL_ID}" && -n "${SHARED_TUNNEL_TOKEN}" ]]; then
+  TUNNEL_ID="${SHARED_TUNNEL_ID}"
+  TUNNEL_TOKEN="${SHARED_TUNNEL_TOKEN}"
+  echo "[tunnel] using machine tunnel: ${TUNNEL_ID}"
+elif [[ -f "${STATE_FILE}" && "${FORCE_NEW_DOMAIN}" != "1" ]]; then
+  # Fallback: legacy per-project state (migration path)
   TUNNEL_ID="$(state_get tunnel_id || true)"
   TUNNEL_TOKEN="$(state_get tunnel_token || true)"
   HOSTNAME="$(state_get hostname || true)"
   PUBLIC_URL="$(state_get public_url || true)"
-fi
-
-# If this project has no tunnel yet, inherit from shared machine tunnel
-if [[ -z "${TUNNEL_ID}" && -n "${SHARED_TUNNEL_ID}" && -n "${SHARED_TUNNEL_TOKEN}" ]]; then
-  TUNNEL_ID="${SHARED_TUNNEL_ID}"
-  TUNNEL_TOKEN="${SHARED_TUNNEL_TOKEN}"
-  echo "[tunnel] reusing machine tunnel: ${TUNNEL_ID}"
 fi
 
 if [[ "${DOMAIN_MODE}" == "fixed" ]]; then
@@ -980,19 +1027,19 @@ fi
 
 created_tunnel_id=""
 if [[ -z "${TUNNEL_ID}" || -z "${TUNNEL_TOKEN}" ]]; then
-  # No shared tunnel yet — create one for this machine and save it
+  # No machine tunnel yet — create one and save it
   if [[ "${DOMAIN_MODE}" == "fixed" ]]; then
-    payload="$(python3 - "${USER_SLUG}-machine" "${MACHINE_ID}" "${USER_ID}" <<'PY'
+    payload="$(python3 - "${USER_SLUG}-machine" <<'PY'
 import json, sys
-name, machine_id, user_id = sys.argv[1:]
-print(json.dumps({"name": name, "owner_id": machine_id + ":" + user_id}))
+name = sys.argv[1]
+print(json.dumps({"name": name}))
 PY
 )"
     resp="$(api_post "${CONTROL_API_BASE}/api/tunnels" "${payload}")"
     TUNNEL_ID="$(echo "${resp}" | json_get tunnel.id)"
     TUNNEL_TOKEN="$(echo "${resp}" | json_get tunnel.token)"
     created_tunnel_id="${TUNNEL_ID}"
-    machine_tunnel_write "${TUNNEL_ID}" "${TUNNEL_TOKEN}"
+    machine_state_write "${TUNNEL_ID}" "${TUNNEL_TOKEN}"
     echo "[tunnel] created new machine tunnel: ${TUNNEL_ID}"
   else
     payload="$(python3 - "${USER_ID}" "${PROJECT_NAME}" "${TARGET}" "${BASE_DOMAIN}" <<'PY'
@@ -1012,7 +1059,7 @@ PY
     TUNNEL_TOKEN="$(echo "${resp}" | json_get tunnel.token)"
     HOSTNAME="$(echo "${resp}" | json_get route.hostname)"
     PUBLIC_URL="$(echo "${resp}" | json_get public_url)"
-    machine_tunnel_write "${TUNNEL_ID}" "${TUNNEL_TOKEN}"
+    machine_state_write "${TUNNEL_ID}" "${TUNNEL_TOKEN}"
     echo "[tunnel] created new machine tunnel: ${TUNNEL_ID}"
   fi
 fi
@@ -1054,13 +1101,21 @@ fi
 echo "[2/5] write runners"
 write_runner_scripts
 
-echo "[3/5] restart local app + agent"
+echo "[3/5] restart local app + ensure machine agent"
 stop_by_pid_file "${APP_PID_FILE}"
-stop_by_pid_file "${AGENT_PID_FILE}"
 stop_by_tcp_port "${PROJECT_PORT}"
-stop_by_tcp_port "${AGENT_ADMIN_PORT}"
 start_runner "${APP_RUNNER}" "${APP_PID_FILE}" "${APP_LOG}"
-start_runner "${AGENT_RUNNER}" "${AGENT_PID_FILE}" "${AGENT_LOG}"
+
+# Machine-agent: start only if not already running
+if is_machine_agent_running; then
+  echo "[machine-agent] already running (pid=$(cat "${MACHINE_AGENT_PID}" 2>/dev/null || echo '?'))"
+else
+  echo "[machine-agent] starting..."
+  write_machine_agent_runner "${TUNNEL_ID}" "${TUNNEL_TOKEN}"
+  # Stop any stale process on the admin port
+  stop_by_tcp_port "${MACHINE_AGENT_ADMIN_PORT}"
+  start_runner "${MACHINE_AGENT_RUNNER}" "${MACHINE_AGENT_PID}" "${MACHINE_AGENT_LOG}"
+fi
 
 echo "[4/5] wait local app"
 if ! wait_http_ok "http://127.0.0.1:${PROJECT_PORT}/" 60; then
@@ -1074,19 +1129,21 @@ if [[ -n "${real_app_pid}" ]]; then
   echo "${real_app_pid}" >"${APP_PID_FILE}"
 fi
 
-echo "[5/5] wait agent"
-if ! wait_http_ok "${AGENT_STATUS_URL}" 25; then
-  echo "ERROR: agent admin not ready at ${AGENT_ADMIN_ADDR}" >&2
-  tail -n 80 "${AGENT_LOG}" || true
+echo "[5/5] wait machine agent"
+if ! wait_http_ok "${MACHINE_AGENT_STATUS_URL}" 25; then
+  echo "ERROR: machine agent admin not ready at ${MACHINE_AGENT_ADMIN_ADDR}" >&2
+  tail -n 80 "${MACHINE_AGENT_LOG}" || true
   exit 1
 fi
+# Override AGENT_STATUS_URL so wait_agent_connected uses the machine agent
+AGENT_STATUS_URL="${MACHINE_AGENT_STATUS_URL}"
 if ! wait_agent_connected 25; then
-  echo "WARN: agent started but not connected yet" >&2
+  echo "WARN: machine agent started but not connected yet" >&2
 fi
 
-real_agent_pid="$(pid_on_tcp_port "${AGENT_ADMIN_PORT}" || true)"
+real_agent_pid="$(pid_on_tcp_port "${MACHINE_AGENT_ADMIN_PORT}" || true)"
 if [[ -n "${real_agent_pid}" ]]; then
-  echo "${real_agent_pid}" >"${AGENT_PID_FILE}"
+  echo "${real_agent_pid}" >"${MACHINE_AGENT_PID}"
 fi
 
 state_write
@@ -1100,4 +1157,4 @@ echo "target: http://${TARGET}"
 curl -sS -o /dev/null -w "public_probe code=%{http_code} ttfb=%{time_starttransfer}s total=%{time_total}s\n" "${PUBLIC_URL}" || true
 echo "state_file: ${STATE_FILE}"
 echo "app_log: ${APP_LOG}"
-echo "agent_log: ${AGENT_LOG}"
+echo "agent_log: ${MACHINE_AGENT_LOG}"
