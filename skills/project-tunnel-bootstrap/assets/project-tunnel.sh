@@ -188,7 +188,7 @@ shell_quote() {
 
 json_get() {
   local path="$1"
-  python3 -c '
+  $PYTHON -c '
 import json
 import sys
 obj = json.load(sys.stdin)
@@ -206,7 +206,7 @@ else:
 state_get() {
   local key="$1"
   [[ -f "${STATE_FILE}" ]] || return 1
-  python3 - "${STATE_FILE}" "${key}" <<'PY'
+  $PYTHON - "${STATE_FILE}" "${key}" <<'PY'
 import json
 import os
 import sys
@@ -227,7 +227,7 @@ PY
 }
 
 state_write() {
-  python3 - "${STATE_FILE}" \
+  $PYTHON - "${STATE_FILE}" \
     "${PROJECT_NAME}" "${PROJECT_DIR}" "${PROJECT_PORT}" "${USER_ID}" "${BASE_DOMAIN}" \
     "${DOMAIN_MODE}" "${SUBDOMAIN}" "${HOSTNAME}" "${PUBLIC_URL}" \
     "${TUNNEL_ID}" "${TUNNEL_TOKEN}" "${TARGET}" "${MACHINE_AGENT_ADMIN_ADDR}" \
@@ -319,7 +319,7 @@ list_project_sibling_states() {
   local base_domain="$4"
   local hostname="$5"
   local current_port="$6"
-  python3 - "${root}" "${project_name}" "${user_id}" "${base_domain}" "${hostname}" "${current_port}" <<'PY'
+  $PYTHON - "${root}" "${project_name}" "${user_id}" "${base_domain}" "${hostname}" "${current_port}" <<'PY'
 import glob
 import json
 import os
@@ -384,7 +384,7 @@ cleanup_other_ports_for_same_project() {
       if [[ -z "${old_target}" ]]; then
         old_target="127.0.0.1:${old_port}"
       fi
-      old_payload="$(python3 - "${old_tunnel}" "${old_host}" "${old_target}" <<'PY'
+      old_payload="$($PYTHON - "${old_tunnel}" "${old_host}" "${old_target}" <<'PY'
 import json
 import sys
 tunnel_id, hostname, target = sys.argv[1:4]
@@ -409,7 +409,7 @@ PY
 
 parse_package_name() {
   local file="$1"
-  python3 - "${file}" <<'PY'
+  $PYTHON - "${file}" <<'PY'
 import json
 import os
 import sys
@@ -434,7 +434,7 @@ PY
 detect_start_cmd() {
   local pkg_file="$1"
   local port="$2"
-  python3 - "${pkg_file}" "${port}" <<'PY'
+  $PYTHON - "${pkg_file}" "${port}" <<'PY'
 import json
 import os
 import sys
@@ -662,7 +662,15 @@ EOF_AGENT
 }
 
 require_cmd curl
-require_cmd python3
+# Detect python3 or python (python 2 not supported; script requires python 3)
+if command -v python3 >/dev/null 2>&1; then
+  PYTHON=python3
+elif command -v python >/dev/null 2>&1 && python -c "import sys; assert sys.version_info[0]==3" 2>/dev/null; then
+  PYTHON=python
+else
+  echo "ERROR: python3 (or python pointing to Python 3) is required" >&2
+  exit 1
+fi
 require_cmd node
 require_cmd npm
 
@@ -819,7 +827,7 @@ if [[ "${cmd}" == "stop" ]]; then
       stop_target="${TARGET}"
     fi
     if [[ -n "${stop_tunnel_id}" && -n "${stop_hostname}" ]]; then
-      stop_payload="$(python3 - "${stop_tunnel_id}" "${stop_hostname}" "${stop_target}" <<'PY'
+      stop_payload="$($PYTHON - "${stop_tunnel_id}" "${stop_hostname}" "${stop_target}" <<'PY'
 import json
 import sys
 tunnel_id, hostname, target = sys.argv[1:4]
@@ -914,7 +922,7 @@ mkdir -p "${MACHINE_DIR}" "${MACHINE_AGENT_DIR}"
 
 # Generate a stable machine ID (once only)
 if [[ ! -f "${MACHINE_ID_FILE}" ]]; then
-  python3 -c "import uuid; print(str(uuid.uuid4()))" > "${MACHINE_ID_FILE}"
+  $PYTHON -c "import uuid; print(str(uuid.uuid4()))" > "${MACHINE_ID_FILE}"
 fi
 MACHINE_ID="$(cat "${MACHINE_ID_FILE}" | tr -d '[:space:]')"
 
@@ -922,7 +930,7 @@ MACHINE_ID="$(cat "${MACHINE_ID_FILE}" | tr -d '[:space:]')"
 machine_state_read() {
   local key="$1"
   [[ -f "${MACHINE_STATE_FILE}" ]] || return 1
-  python3 - "${MACHINE_STATE_FILE}" "${key}" <<'PY'
+  $PYTHON - "${MACHINE_STATE_FILE}" "${key}" <<'PY'
 import json, sys, os
 f, k = sys.argv[1], sys.argv[2]
 if not os.path.exists(f): raise SystemExit(1)
@@ -936,7 +944,7 @@ PY
 # Write full machine state
 machine_state_write() {
   # Args: tunnel_id tunnel_token
-  python3 - "${MACHINE_STATE_FILE}" "${MACHINE_ID}" "${USER_ID}" \
+  $PYTHON - "${MACHINE_STATE_FILE}" "${MACHINE_ID}" "${USER_ID}" \
     "$1" "$2" "${MACHINE_AGENT_ADMIN_ADDR}" <<'PY'
 import json, sys, os
 from datetime import datetime, timezone
@@ -1037,7 +1045,7 @@ created_tunnel_id=""
 if [[ -z "${TUNNEL_ID}" || -z "${TUNNEL_TOKEN}" ]]; then
   # No machine tunnel yet — create one and save it
   if [[ "${DOMAIN_MODE}" == "fixed" ]]; then
-    payload="$(python3 - "${USER_SLUG}-machine" <<'PY'
+    payload="$($PYTHON - "${USER_SLUG}-machine" <<'PY'
 import json, sys
 name = sys.argv[1]
 print(json.dumps({"name": name}))
@@ -1050,7 +1058,7 @@ PY
     machine_state_write "${TUNNEL_ID}" "${TUNNEL_TOKEN}"
     echo "[tunnel] created new machine tunnel: ${TUNNEL_ID}"
   else
-    payload="$(python3 - "${USER_ID}" "${PROJECT_NAME}" "${TARGET}" "${BASE_DOMAIN}" <<'PY'
+    payload="$($PYTHON - "${USER_ID}" "${PROJECT_NAME}" "${TARGET}" "${BASE_DOMAIN}" <<'PY'
 import json
 import sys
 user_id, project, target, base_domain = sys.argv[1:5]
@@ -1078,7 +1086,7 @@ if [[ -z "${HOSTNAME}" ]]; then
 fi
 PUBLIC_URL="${PUBLIC_SCHEME}://${HOSTNAME}"
 
-payload="$(python3 - "${TUNNEL_ID}" "${HOSTNAME}" "${TARGET}" <<'PY'
+payload="$($PYTHON - "${TUNNEL_ID}" "${HOSTNAME}" "${TARGET}" <<'PY'
 import json
 import sys
 tunnel_id, hostname, target = sys.argv[1:4]
