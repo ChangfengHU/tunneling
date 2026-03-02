@@ -43,10 +43,14 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/tunnels", s.handleTunnels)
 	mux.HandleFunc("/api/routes", s.handleRoutes)
 	mux.HandleFunc("/api/sessions/register", s.handleSessionRegister)
+	mux.HandleFunc("/api/sessions/add-route", s.handleSessionAddRoute)
 	mux.HandleFunc("/api/tunnels/", s.handleTunnelByID)
 	mux.HandleFunc("/api/logs", s.handleLogs)
 	mux.HandleFunc("/agent/routes", s.handleAgentRoutes)
-	return mux
+	mux.HandleFunc("/api/portal/login", s.handlePortalLogin)
+	mux.HandleFunc("/api/portal/routes/", s.handlePortalRouteByID)
+	mux.HandleFunc("/api/portal/routes", s.handlePortalRoutesAPI)
+	return corsMiddleware(mux)
 }
 
 func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
@@ -586,6 +590,261 @@ func isRouteConflictError(err error) bool {
 	}
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "status=409") || strings.Contains(msg, "duplicate key")
+}
+
+// corsMiddleware adds CORS headers to all responses so the browser-based portal
+// can call the control API from a different origin.
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Portal endpoints  (authentication: tunnel_id + token in every request)
+// ---------------------------------------------------------------------------
+
+func (s *Server) handlePortalLogin(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		TunnelID string `json:"tunnel_id"`
+	}
+	if err := decodeJSON(r.Body, &req); err != nil {
+		errorJSON(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	req.TunnelID = strings.TrimSpace(req.TunnelID)
+	if req.TunnelID == "" {
+		errorJSON(w, http.StatusBadRequest, "tunnel_id is required")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	tunnel, err := s.supabase.GetTunnelByID(ctx, req.TunnelID)
+	if err != nil {
+		errorJSON(w, http.StatusNotFound, "tunnel not found")
+		return
+	}
+	// Return token so the frontend can store it for authenticated write operations
+	writeJSON(w, http.StatusOK, map[string]any{
+		"tunnel": map[string]any{
+			"id":         tunnel.ID,
+			"name":       tunnel.Name,
+			"token":      tunnel.Token,
+			"created_at": tunnel.CreatedAt,
+		},
+	})
+}
+
+func (s *Server) handlePortalRoutesAPI(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		s.handlePortalListRoutes(w, r)
+	case http.MethodPost:
+		s.handlePortalAddRoute(w, r)
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *Server) handlePortalListRoutes(w http.ResponseWriter, r *http.Request) {
+	tunnelID := strings.TrimSpace(r.URL.Query().Get("tunnel_id"))
+	if tunnelID == "" {
+		errorJSON(w, http.StatusBadRequest, "tunnel_id is required")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	// Verify tunnel exists
+	if _, err := s.supabase.GetTunnelByID(ctx, tunnelID); err != nil {
+		errorJSON(w, http.StatusNotFound, "tunnel not found")
+		return
+	}
+	routes, err := s.supabase.ListRoutesByTunnel(ctx, tunnelID)
+	if err != nil {
+		errorJSON(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"routes": routes})
+}
+
+func (s *Server) handlePortalRouteByID(w http.ResponseWriter, r *http.Request) {
+	routeID := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/portal/routes/"), "/")
+	if routeID == "" {
+		http.NotFound(w, r)
+		return
+	}
+	if r.Method != http.MethodPatch {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		TunnelID string `json:"tunnel_id"`
+		Token    string `json:"token"`
+		Hostname string `json:"hostname"`
+		Enabled  *bool  `json:"is_enabled,omitempty"`
+	}
+	if err := decodeJSON(r.Body, &req); err != nil {
+		errorJSON(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	req.TunnelID = strings.TrimSpace(req.TunnelID)
+	req.Token = strings.TrimSpace(req.Token)
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	if _, err := s.supabase.ValidateTunnelToken(ctx, req.TunnelID, req.Token); err != nil {
+		errorJSON(w, http.StatusUnauthorized, "invalid credentials")
+		return
+	}
+	existing, err := s.supabase.GetRouteByID(ctx, routeID)
+	if err != nil {
+		errorJSON(w, http.StatusNotFound, "route not found")
+		return
+	}
+	if existing.TunnelID != req.TunnelID {
+		errorJSON(w, http.StatusForbidden, "route does not belong to this tunnel")
+		return
+	}
+
+	// Handle hostname update
+	if strings.TrimSpace(req.Hostname) != "" {
+		hostname, err := normalizeHostname(req.Hostname)
+		if err != nil {
+			errorJSON(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if hostname != existing.Hostname {
+			if _, checkErr := s.supabase.GetRouteByHostname(ctx, hostname); checkErr == nil {
+				errorJSON(w, http.StatusConflict, "hostname is already in use by another tunnel")
+				return
+			} else if !errors.Is(checkErr, ErrNotFound) {
+				errorJSON(w, http.StatusBadGateway, checkErr.Error())
+				return
+			}
+			updated, err := s.supabase.UpdateRouteHostname(ctx, routeID, hostname)
+			if err != nil {
+				errorJSON(w, http.StatusBadGateway, err.Error())
+				return
+			}
+			s.events.Add("info", "route.hostname.updated", req.TunnelID, fmt.Sprintf("%s => %s", existing.Hostname, hostname))
+			writeJSON(w, http.StatusOK, map[string]any{"route": updated})
+			return
+		}
+	}
+
+	// Handle enabled toggle (no hostname change)
+	if req.Enabled != nil {
+		updated, err := s.supabase.UpdateRoute(ctx, routeID, existing.Target, *req.Enabled)
+		if err != nil {
+			errorJSON(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"route": updated})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"route": existing})
+}
+
+// handlePortalAddRoute adds a new route to an existing tunnel (for multi-project support).
+func (s *Server) handlePortalAddRoute(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		TunnelID   string `json:"tunnel_id"`
+		Token      string `json:"token"`
+		Target     string `json:"target"`
+		BaseDomain string `json:"base_domain"`
+		Subdomain  string `json:"subdomain,omitempty"`
+		Project    string `json:"project,omitempty"`
+		Enabled    *bool  `json:"enabled,omitempty"`
+	}
+	if err := decodeJSON(r.Body, &req); err != nil {
+		errorJSON(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	req.TunnelID = strings.TrimSpace(req.TunnelID)
+	req.Token = strings.TrimSpace(req.Token)
+	if req.TunnelID == "" || req.Token == "" {
+		errorJSON(w, http.StatusBadRequest, "tunnel_id and token are required")
+		return
+	}
+	target, err := normalizeTarget(req.Target)
+	if err != nil {
+		errorJSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	baseDomain, err := normalizeBaseDomain(req.BaseDomain)
+	if err != nil {
+		errorJSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	enabled := true
+	if req.Enabled != nil {
+		enabled = *req.Enabled
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+	if _, err := s.supabase.ValidateTunnelToken(ctx, req.TunnelID, req.Token); err != nil {
+		errorJSON(w, http.StatusUnauthorized, "invalid credentials")
+		return
+	}
+
+	label := sanitizeDNSLabel(req.Subdomain)
+	if label == "" {
+		label = sanitizeDNSLabel(req.Project)
+	}
+	if label == "" {
+		label = "app"
+	}
+
+	var route Route
+	var createErr error
+	for i := 0; i < 6; i++ {
+		hostname := fmt.Sprintf("%s-%s.%s", label, randomSuffix(6), baseDomain)
+		route, createErr = s.supabase.CreateRoute(ctx, Route{
+			TunnelID: req.TunnelID,
+			Hostname: hostname,
+			Target:   target,
+			Enabled:  enabled,
+		})
+		if createErr == nil {
+			break
+		}
+		if !isRouteConflictError(createErr) {
+			break
+		}
+	}
+	if createErr != nil {
+		errorJSON(w, http.StatusBadGateway, createErr.Error())
+		return
+	}
+	s.events.Add("info", "route.added", req.TunnelID, fmt.Sprintf("%s => %s", route.Hostname, route.Target))
+	writeJSON(w, http.StatusOK, map[string]any{
+		"route":      route,
+		"public_url": "http://" + route.Hostname,
+	})
+}
+
+// handleSessionAddRoute adds a new route to an existing tunnel (for agent CLI multi-project usage).
+// It accepts the same body as portal/add-route so the agent can call either endpoint.
+func (s *Server) handleSessionAddRoute(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	s.handlePortalAddRoute(w, r)
 }
 
 func mustWSURL(baseURL string) string {

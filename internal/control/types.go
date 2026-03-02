@@ -16,7 +16,7 @@ type Route struct {
 	TunnelID  string `json:"tunnel_id"`
 	Hostname  string `json:"hostname"`
 	Target    string `json:"target"`
-	Enabled   bool   `json:"enabled"`
+	Enabled   bool   `json:"is_enabled"`
 	CreatedAt string `json:"created_at,omitempty"`
 	UpdatedAt string `json:"updated_at,omitempty"`
 }

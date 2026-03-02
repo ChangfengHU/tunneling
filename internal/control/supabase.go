@@ -45,7 +45,7 @@ func (c *SupabaseClient) ListTunnels(ctx context.Context) ([]Tunnel, error) {
 	query.Set("order", "created_at.desc")
 
 	var out []Tunnel
-	if err := c.requestJSON(ctx, http.MethodGet, "/rest/v1/tunnel_tunnels", query, nil, nil, &out); err != nil {
+	if err := c.requestJSON(ctx, http.MethodGet, "/rest/v1/tunnel_instances", query, nil, nil, &out); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -57,12 +57,12 @@ func (c *SupabaseClient) CreateTunnel(ctx context.Context, name, token string) (
 
 func (c *SupabaseClient) CreateTunnelWithMeta(ctx context.Context, name, token, ownerID, projectKey string) (Tunnel, error) {
 	basePayload := map[string]any{
-		"name":  name,
-		"token": token,
+		"name":       name,
+		"token_hash": token,
 	}
 	payload := map[string]any{
-		"name":  name,
-		"token": token,
+		"name":       name,
+		"token_hash": token,
 	}
 	useMeta := false
 	if strings.TrimSpace(ownerID) != "" {
@@ -75,17 +75,17 @@ func (c *SupabaseClient) CreateTunnelWithMeta(ctx context.Context, name, token, 
 	}
 
 	query := url.Values{}
-	query.Set("select", "id,name,token,created_at")
+	query.Set("select", "id,name,token:token_hash,created_at")
 
 	headers := map[string]string{
 		"Prefer": "return=representation",
 	}
 
 	var rows []Tunnel
-	if err := c.requestJSON(ctx, http.MethodPost, "/rest/v1/tunnel_tunnels", query, headers, payload, &rows); err != nil {
+	if err := c.requestJSON(ctx, http.MethodPost, "/rest/v1/tunnel_instances", query, headers, payload, &rows); err != nil {
 		if useMeta && isMissingColumnError(err) {
 			rows = nil
-			if err2 := c.requestJSON(ctx, http.MethodPost, "/rest/v1/tunnel_tunnels", query, headers, basePayload, &rows); err2 != nil {
+			if err2 := c.requestJSON(ctx, http.MethodPost, "/rest/v1/tunnel_instances", query, headers, basePayload, &rows); err2 != nil {
 				return Tunnel{}, err2
 			}
 		} else {
@@ -100,12 +100,12 @@ func (c *SupabaseClient) CreateTunnelWithMeta(ctx context.Context, name, token, 
 
 func (c *SupabaseClient) GetTunnelByID(ctx context.Context, id string) (Tunnel, error) {
 	query := url.Values{}
-	query.Set("select", "id,name,token,created_at")
+	query.Set("select", "id,name,token:token_hash,created_at")
 	query.Set("id", "eq."+id)
 	query.Set("limit", "1")
 
 	var rows []Tunnel
-	if err := c.requestJSON(ctx, http.MethodGet, "/rest/v1/tunnel_tunnels", query, nil, nil, &rows); err != nil {
+	if err := c.requestJSON(ctx, http.MethodGet, "/rest/v1/tunnel_instances", query, nil, nil, &rows); err != nil {
 		return Tunnel{}, err
 	}
 	if len(rows) == 0 {
@@ -116,13 +116,13 @@ func (c *SupabaseClient) GetTunnelByID(ctx context.Context, id string) (Tunnel, 
 
 func (c *SupabaseClient) ValidateTunnelToken(ctx context.Context, tunnelID, token string) (Tunnel, error) {
 	query := url.Values{}
-	query.Set("select", "id,name,token,created_at")
+	query.Set("select", "id,name,token:token_hash,created_at")
 	query.Set("id", "eq."+tunnelID)
-	query.Set("token", "eq."+token)
+	query.Set("token_hash", "eq."+token)
 	query.Set("limit", "1")
 
 	var rows []Tunnel
-	if err := c.requestJSON(ctx, http.MethodGet, "/rest/v1/tunnel_tunnels", query, nil, nil, &rows); err != nil {
+	if err := c.requestJSON(ctx, http.MethodGet, "/rest/v1/tunnel_instances", query, nil, nil, &rows); err != nil {
 		return Tunnel{}, err
 	}
 	if len(rows) == 0 {
@@ -134,7 +134,7 @@ func (c *SupabaseClient) ValidateTunnelToken(ctx context.Context, tunnelID, toke
 func (c *SupabaseClient) UpsertRoute(ctx context.Context, route Route) (Route, error) {
 	query := url.Values{}
 	query.Set("on_conflict", "hostname")
-	query.Set("select", "id,tunnel_id,hostname,target,enabled,created_at,updated_at")
+	query.Set("select", "id,tunnel_id,hostname,target,is_enabled,created_at,updated_at")
 
 	headers := map[string]string{
 		"Prefer": "resolution=merge-duplicates,return=representation",
@@ -154,17 +154,17 @@ func (c *SupabaseClient) UpsertRoute(ctx context.Context, route Route) (Route, e
 
 func (c *SupabaseClient) CreateRoute(ctx context.Context, route Route) (Route, error) {
 	query := url.Values{}
-	query.Set("select", "id,tunnel_id,hostname,target,enabled,created_at,updated_at")
+	query.Set("select", "id,tunnel_id,hostname,target,is_enabled,created_at,updated_at")
 
 	headers := map[string]string{
 		"Prefer": "return=representation",
 	}
 
 	payload := map[string]any{
-		"tunnel_id": route.TunnelID,
-		"hostname":  route.Hostname,
-		"target":    route.Target,
-		"enabled":   route.Enabled,
+		"tunnel_id":  route.TunnelID,
+		"hostname":   route.Hostname,
+		"target":     route.Target,
+		"is_enabled": route.Enabled,
 	}
 
 	var rows []Route
@@ -184,13 +184,13 @@ func (c *SupabaseClient) UpdateRoute(ctx context.Context, routeID string, target
 func (c *SupabaseClient) UpdateRouteBinding(ctx context.Context, routeID string, tunnelID string, target string, enabled bool) (Route, error) {
 	query := url.Values{}
 	query.Set("id", "eq."+routeID)
-	query.Set("select", "id,tunnel_id,hostname,target,enabled,created_at,updated_at")
+	query.Set("select", "id,tunnel_id,hostname,target,is_enabled,created_at,updated_at")
 
 	headers := map[string]string{
 		"Prefer": "return=representation",
 	}
 
-	payload := map[string]any{"target": target, "enabled": enabled}
+	payload := map[string]any{"target": target, "is_enabled": enabled}
 	if strings.TrimSpace(tunnelID) != "" {
 		payload["tunnel_id"] = strings.TrimSpace(tunnelID)
 	}
@@ -207,7 +207,7 @@ func (c *SupabaseClient) UpdateRouteBinding(ctx context.Context, routeID string,
 
 func (c *SupabaseClient) GetRouteByHostname(ctx context.Context, hostname string) (Route, error) {
 	query := url.Values{}
-	query.Set("select", "id,tunnel_id,hostname,target,enabled,created_at,updated_at")
+	query.Set("select", "id,tunnel_id,hostname,target,is_enabled,created_at,updated_at")
 	query.Set("hostname", "eq."+hostname)
 	query.Set("limit", "1")
 
@@ -227,12 +227,12 @@ func (c *SupabaseClient) DeleteTunnelByID(ctx context.Context, tunnelID string) 
 	headers := map[string]string{
 		"Prefer": "return=minimal",
 	}
-	return c.requestJSON(ctx, http.MethodDelete, "/rest/v1/tunnel_tunnels", query, headers, nil, nil)
+	return c.requestJSON(ctx, http.MethodDelete, "/rest/v1/tunnel_instances", query, headers, nil, nil)
 }
 
 func (c *SupabaseClient) ListRoutesByTunnel(ctx context.Context, tunnelID string) ([]Route, error) {
 	query := url.Values{}
-	query.Set("select", "id,tunnel_id,hostname,target,enabled,created_at,updated_at")
+	query.Set("select", "id,tunnel_id,hostname,target,is_enabled,created_at,updated_at")
 	query.Set("tunnel_id", "eq."+tunnelID)
 	query.Set("order", "hostname.asc")
 
@@ -243,11 +243,47 @@ func (c *SupabaseClient) ListRoutesByTunnel(ctx context.Context, tunnelID string
 	return rows, nil
 }
 
+func (c *SupabaseClient) GetRouteByID(ctx context.Context, routeID string) (Route, error) {
+	query := url.Values{}
+	query.Set("select", "id,tunnel_id,hostname,target,is_enabled,created_at,updated_at")
+	query.Set("id", "eq."+routeID)
+	query.Set("limit", "1")
+
+	var rows []Route
+	if err := c.requestJSON(ctx, http.MethodGet, "/rest/v1/tunnel_routes", query, nil, nil, &rows); err != nil {
+		return Route{}, err
+	}
+	if len(rows) == 0 {
+		return Route{}, ErrNotFound
+	}
+	return rows[0], nil
+}
+
+func (c *SupabaseClient) UpdateRouteHostname(ctx context.Context, routeID, hostname string) (Route, error) {
+	query := url.Values{}
+	query.Set("id", "eq."+routeID)
+	query.Set("select", "id,tunnel_id,hostname,target,is_enabled,created_at,updated_at")
+
+	headers := map[string]string{
+		"Prefer": "return=representation",
+	}
+	payload := map[string]any{"hostname": hostname}
+
+	var rows []Route
+	if err := c.requestJSON(ctx, http.MethodPatch, "/rest/v1/tunnel_routes", query, headers, payload, &rows); err != nil {
+		return Route{}, err
+	}
+	if len(rows) == 0 {
+		return Route{}, ErrNotFound
+	}
+	return rows[0], nil
+}
+
 func (c *SupabaseClient) ListEnabledProtocolRoutesByTunnel(ctx context.Context, tunnelID string) ([]Route, error) {
 	query := url.Values{}
-	query.Set("select", "hostname,target,enabled")
+	query.Set("select", "hostname,target,is_enabled")
 	query.Set("tunnel_id", "eq."+tunnelID)
-	query.Set("enabled", "eq.true")
+	query.Set("is_enabled", "eq.true")
 	query.Set("order", "hostname.asc")
 
 	var rows []Route

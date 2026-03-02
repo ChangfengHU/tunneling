@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-gray-50">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SaaS Console Demo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+</head>
+
+<body class="h-full overflow-hidden" x-data="{ 
+    authState: 'login',
+    detailsOpen: false, 
+    activeTab: 'details',
+    sidebarOpen: true
+}">
+
+    <!-- Login Screen -->
+    <div x-show="authState === 'login'"
+        class="min-h-full flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 bg-gray-900">
+        <div class="max-w-md w-full space-y-8 bg-white p-10 rounded-2xl shadow-xl">
+            <div>
+                <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900">Super Admin Portal</h2>
+                <p class="mt-2 text-center text-sm text-gray-500">Supabase Authentication Required</p>
+            </div>
+            <form class="mt-8 space-y-6" @submit.prevent="authState = 'dashboard'">
+                <div class="rounded-md shadow-sm -space-y-px">
+                    <div>
+                        <input name="email" type="email" required
+                            class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                            placeholder="admin@example.com">
+                    </div>
+                    <div>
+                        <input name="password" type="password" required
+                            class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                            placeholder="Password (type anything)">
+                    </div>
+                </div>
+                <div>
+                    <button type="submit"
+                        class="w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">
+                        Sign in (Demo)
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Main Dashboard -->
+    <div x-show="authState === 'dashboard'" class="h-full flex" style="display: none;">
+
+        <!-- Sidebar -->
+        <div class="bg-indigo-900 text-white w-64 flex-shrink-0 flex flex-col" x-show="sidebarOpen">
+            <div class="h-16 flex items-center px-6 bg-indigo-950">
+                <span class="text-xl font-bold tracking-tight">Tunnel Console</span>
+            </div>
+            <div class="flex-1 overflow-y-auto py-4">
+                <nav class="px-3 space-y-1">
+                    <a href="#"
+                        class="bg-indigo-800 text-white group flex items-center px-3 py-2 text-sm font-medium rounded-md">Dashboard</a>
+                    <a href="#"
+                        class="text-indigo-100 hover:bg-indigo-800 hover:text-white group flex items-center px-3 py-2 text-sm font-medium rounded-md">Tunnels</a>
+                    <a href="#"
+                        class="text-indigo-100 hover:bg-indigo-800 hover:text-white group flex items-center px-3 py-2 text-sm font-medium rounded-md">Users
+                        (Supabase)</a>
+                </nav>
+            </div>
+            <div class="flex-shrink-0 flex bg-indigo-950 p-4 cursor-pointer" @click="authState = 'login'">
+                <p class="text-sm font-medium text-indigo-300 hover:text-white">Sign out</p>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="flex-1 flex flex-col overflow-hidden">
+            <header class="bg-white shadow-sm h-16 flex items-center justify-between px-6 border-b border-gray-200">
+                <button class="text-gray-500" @click="sidebarOpen = !sidebarOpen">☰ Menu</button>
+                <input type="text" class="border border-gray-300 rounded-lg px-4 py-2 text-sm max-w-md w-full ml-4"
+                    placeholder="Search tunnels...">
+            </header>
+
+            <main class="flex-1 overflow-y-auto bg-gray-50 p-6">
+                <div class="flex justify-between items-center mb-6">
+                    <h1 class="text-2xl font-bold text-gray-900">Tunnels Management</h1>
+                    <button
+                        class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">+
+                        New Tunnel</button>
+                </div>
+
+                <div class="bg-white shadow-sm rounded-xl border border-gray-200 overflow-hidden">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tunnel /
+                                    User</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            <tr class="hover:bg-gray-50 cursor-pointer" @click="detailsOpen = true">
+                                <td class="px-6 py-4">
+                                    <div class="text-sm font-medium text-gray-900">gittree-control-tower</div>
+                                    <div class="text-sm text-gray-500">user: huchangfeng</div>
+                                </td>
+                                <td class="px-6 py-4">
+                                    <span
+                                        class="px-2.5 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">Active</span>
+                                </td>
+                                <td class="px-6 py-4 text-right">
+                                    <button
+                                        class="text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-md hover:bg-indigo-100">Administer</button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Slide-over Panel -->
+    <div class="fixed inset-0 overflow-hidden" style="display: none; z-index: 50;" x-show="detailsOpen">
+        <div class="absolute inset-0 bg-gray-900 bg-opacity-75" @click="detailsOpen = false"></div>
+        <div class="fixed inset-y-0 right-0 max-w-3xl w-full flex bg-white shadow-xl flex-col">
+            <div class="px-6 py-6 bg-indigo-700 text-white flex justify-between">
+                <h2 class="text-xl font-bold">gittree-control-tower</h2>
+                <button @click="detailsOpen = false" class="text-indigo-200 hover:text-white">✕ Close</button>
+            </div>
+
+            <div class="border-b border-gray-200 px-6 bg-gray-50 flex space-x-8">
+                <button class="py-4 border-b-2 text-sm font-medium"
+                    :class="activeTab === 'details' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500'"
+                    @click="activeTab = 'details'">Config & Routes</button>
+                <button class="py-4 border-b-2 text-sm font-medium"
+                    :class="activeTab === 'logs' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500'"
+                    @click="activeTab = 'logs'">Real-time Logs</button>
+            </div>
+
+            <div class="flex-1 overflow-y-auto p-6" x-show="activeTab === 'details'">
+                <div class="mb-6">
+                    <h3 class="text-sm font-semibold text-gray-900 mb-2">Local Agent Command</h3>
+                    <div class="bg-gray-900 p-4 rounded-lg"><code
+                            class="text-green-400 text-sm break-all">./agent -server ws://152.32.214.95/connect ...</code>
+                    </div>
+                </div>
+
+                <h3 class="text-sm font-semibold text-gray-900 mb-2">Routes</h3>
+                <div class="bg-white border rounded-lg p-4">
+                    <table class="min-w-full">
+                        <tr class="border-b">
+                            <td class="py-2 text-sm">demo1.vyibc.com</td>
+                            <td class="text-sm text-gray-500">-> 127.0.0.1:8787</td>
+                        </tr>
+                    </table>
+                </div>
+
+                <div class="mt-8 p-4 bg-red-50 border border-red-200 rounded-lg">
+                    <h3 class="text-red-800 font-medium">Danger Zone</h3>
+                    <button class="mt-2 text-sm bg-red-600 text-white px-3 py-1.5 rounded hover:bg-red-700">Delete
+                        Tunnel</button>
+                </div>
+            </div>
+
+            <div class="flex-1 bg-gray-900 p-4 text-gray-300 font-mono text-sm" x-show="activeTab === 'logs'"
+                style="display: none;">
+                <div>[INFO] tunnel.command.requested</div>
+                <div class="text-yellow-400">[WARN] agent.routes.auth_failed</div>
+                <div>[INFO] demo1.vyibc.com connected</div>
+            </div>
+        </div>
+    </div>
+
+</body>
+
+</html>

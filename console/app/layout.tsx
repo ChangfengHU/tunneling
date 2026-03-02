@@ -1,20 +1,24 @@
-import type { Metadata } from "next";
-import "./globals.css";
+import type { Metadata } from 'next'
+import { Inter } from 'next/font/google'
+import './globals.css'
+
+const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: "Tunnel Console",
-  description: "Tunnel config and route management console"
-};
-
-export default function RootLayout({
-  children
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
-  return (
-    <html lang="zh-CN">
-      <body>{children}</body>
-    </html>
-  );
+  title: 'Tunnel Console',
+  description: 'Manage your reverse tunnels',
 }
 
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  return (
+    <html lang="en" className="h-full bg-gray-50">
+      <body className={`${inter.className} h-full overflow-hidden`}>
+        {children}
+      </body>
+    </html>
+  )
+}

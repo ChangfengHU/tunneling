@@ -893,16 +893,72 @@ fi
 
 ensure_agent_binary
 
+# ---------------------------------------------------------------
+# Machine-level shared tunnel
+# All projects on the same machine share ONE tunnel.
+# The machine ID is generated once and stored permanently.
+# ---------------------------------------------------------------
+MACHINE_TUNNEL_DIR="${HOME}/.tunneling"
+MACHINE_ID_FILE="${MACHINE_TUNNEL_DIR}/machine_id"
+MACHINE_TUNNEL_FILE="${MACHINE_TUNNEL_DIR}/machine_tunnel.json"
+
+mkdir -p "${MACHINE_TUNNEL_DIR}"
+
+# Generate a stable machine ID (once only)
+if [[ ! -f "${MACHINE_ID_FILE}" ]]; then
+  python3 -c "import uuid; print(str(uuid.uuid4()))" > "${MACHINE_ID_FILE}"
+fi
+MACHINE_ID="$(cat "${MACHINE_ID_FILE}" | tr -d '[:space:]')"
+
+# Read existing shared tunnel from machine tunnel file
+machine_tunnel_read() {
+  local key="$1"
+  [[ -f "${MACHINE_TUNNEL_FILE}" ]] || return 1
+  python3 - "${MACHINE_TUNNEL_FILE}" "${key}" <<'PY'
+import json, sys, os
+f, k = sys.argv[1], sys.argv[2]
+if not os.path.exists(f): raise SystemExit(1)
+d = json.load(open(f))
+v = d.get(k, "")
+if not v: raise SystemExit(1)
+print(v)
+PY
+}
+
+machine_tunnel_write() {
+  python3 - "${MACHINE_TUNNEL_FILE}" "${MACHINE_ID}" "${USER_ID}" "$1" "$2" <<'PY'
+import json, sys, os
+from datetime import datetime, timezone
+f, machine_id, user_id, tunnel_id, tunnel_token = sys.argv[1:]
+os.makedirs(os.path.dirname(f), exist_ok=True)
+data = {"machine_id": machine_id, "user_id": user_id,
+        "tunnel_id": tunnel_id, "tunnel_token": tunnel_token,
+        "updated_at": datetime.now(timezone.utc).isoformat()}
+open(f, "w").write(json.dumps(data, indent=2))
+PY
+}
+
 TUNNEL_ID=""
 TUNNEL_TOKEN=""
 HOSTNAME=""
 PUBLIC_URL=""
+
+# 1. Try to reuse the machine-level shared tunnel
+SHARED_TUNNEL_ID="$(machine_tunnel_read tunnel_id || true)"
+SHARED_TUNNEL_TOKEN="$(machine_tunnel_read tunnel_token || true)"
 
 if [[ -f "${STATE_FILE}" && "${FORCE_NEW_DOMAIN}" != "1" ]]; then
   TUNNEL_ID="$(state_get tunnel_id || true)"
   TUNNEL_TOKEN="$(state_get tunnel_token || true)"
   HOSTNAME="$(state_get hostname || true)"
   PUBLIC_URL="$(state_get public_url || true)"
+fi
+
+# If this project has no tunnel yet, inherit from shared machine tunnel
+if [[ -z "${TUNNEL_ID}" && -n "${SHARED_TUNNEL_ID}" && -n "${SHARED_TUNNEL_TOKEN}" ]]; then
+  TUNNEL_ID="${SHARED_TUNNEL_ID}"
+  TUNNEL_TOKEN="${SHARED_TUNNEL_TOKEN}"
+  echo "[tunnel] reusing machine tunnel: ${TUNNEL_ID}"
 fi
 
 if [[ "${DOMAIN_MODE}" == "fixed" ]]; then
@@ -924,17 +980,20 @@ fi
 
 created_tunnel_id=""
 if [[ -z "${TUNNEL_ID}" || -z "${TUNNEL_TOKEN}" ]]; then
+  # No shared tunnel yet — create one for this machine and save it
   if [[ "${DOMAIN_MODE}" == "fixed" ]]; then
-    payload="$(python3 - "${PROJECT_SLUG}-${USER_SLUG}" <<'PY'
-import json
-import sys
-print(json.dumps({"name": sys.argv[1]}))
+    payload="$(python3 - "${USER_SLUG}-machine" "${MACHINE_ID}" "${USER_ID}" <<'PY'
+import json, sys
+name, machine_id, user_id = sys.argv[1:]
+print(json.dumps({"name": name, "owner_id": machine_id + ":" + user_id}))
 PY
 )"
     resp="$(api_post "${CONTROL_API_BASE}/api/tunnels" "${payload}")"
     TUNNEL_ID="$(echo "${resp}" | json_get tunnel.id)"
     TUNNEL_TOKEN="$(echo "${resp}" | json_get tunnel.token)"
     created_tunnel_id="${TUNNEL_ID}"
+    machine_tunnel_write "${TUNNEL_ID}" "${TUNNEL_TOKEN}"
+    echo "[tunnel] created new machine tunnel: ${TUNNEL_ID}"
   else
     payload="$(python3 - "${USER_ID}" "${PROJECT_NAME}" "${TARGET}" "${BASE_DOMAIN}" <<'PY'
 import json
@@ -953,6 +1012,8 @@ PY
     TUNNEL_TOKEN="$(echo "${resp}" | json_get tunnel.token)"
     HOSTNAME="$(echo "${resp}" | json_get route.hostname)"
     PUBLIC_URL="$(echo "${resp}" | json_get public_url)"
+    machine_tunnel_write "${TUNNEL_ID}" "${TUNNEL_TOKEN}"
+    echo "[tunnel] created new machine tunnel: ${TUNNEL_ID}"
   fi
 fi
 
@@ -1031,12 +1092,12 @@ fi
 state_write
 
 echo "[DONE]"
-echo "project=${PROJECT_NAME}"
-echo "hostname=${HOSTNAME}"
-echo "public_url=${PUBLIC_URL}"
-echo "tunnel_id=${TUNNEL_ID}"
-echo "target=${TARGET}"
+echo "project: ${PROJECT_NAME}"
+echo "hostname: ${HOSTNAME}"
+echo "public_url: ${PUBLIC_URL}"
+echo "tunnel_id: ${TUNNEL_ID}"
+echo "target: http://${TARGET}"
 curl -sS -o /dev/null -w "public_probe code=%{http_code} ttfb=%{time_starttransfer}s total=%{time_total}s\n" "${PUBLIC_URL}" || true
-echo "state_file=${STATE_FILE}"
-echo "app_log=${APP_LOG}"
-echo "agent_log=${AGENT_LOG}"
+echo "state_file: ${STATE_FILE}"
+echo "app_log: ${APP_LOG}"
+echo "agent_log: ${AGENT_LOG}"
