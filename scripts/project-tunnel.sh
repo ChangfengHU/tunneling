@@ -230,7 +230,7 @@ state_write() {
   python3 - "${STATE_FILE}" \
     "${PROJECT_NAME}" "${PROJECT_DIR}" "${PROJECT_PORT}" "${USER_ID}" "${BASE_DOMAIN}" \
     "${DOMAIN_MODE}" "${SUBDOMAIN}" "${HOSTNAME}" "${PUBLIC_URL}" \
-    "${TUNNEL_ID}" "${TUNNEL_TOKEN}" "${TARGET}" "${AGENT_ADMIN_ADDR}" \
+    "${TUNNEL_ID}" "${TUNNEL_TOKEN}" "${TARGET}" "${MACHINE_AGENT_ADMIN_ADDR}" \
     "${AGENT_BIN}" <<'PY'
 import json
 import os
@@ -1006,6 +1006,14 @@ elif [[ -f "${STATE_FILE}" && "${FORCE_NEW_DOMAIN}" != "1" ]]; then
   TUNNEL_TOKEN="$(state_get tunnel_token || true)"
   HOSTNAME="$(state_get hostname || true)"
   PUBLIC_URL="$(state_get public_url || true)"
+fi
+
+# If machine_state.json doesn't exist yet but we already have a tunnel_id
+# (from legacy state.json), pin it as the machine tunnel now so all
+# subsequent projects on this machine share the same tunnel.
+if [[ -z "${SHARED_TUNNEL_ID}" && -n "${TUNNEL_ID}" && -n "${TUNNEL_TOKEN}" ]]; then
+  machine_state_write "${TUNNEL_ID}" "${TUNNEL_TOKEN}"
+  echo "[tunnel] pinned machine tunnel: ${TUNNEL_ID}"
 fi
 
 if [[ "${DOMAIN_MODE}" == "fixed" ]]; then
