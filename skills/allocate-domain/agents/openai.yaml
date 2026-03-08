@@ -1,0 +1,49 @@
+interface:
+  display_name: "Allocate Domain"
+  short_description: "一句话为任何项目分配公网域名。无需启动项目，只需提供项目名和本地端口。"
+  default_prompt: |
+    Goal: Allocate a public domain for the user's project by calling the domain registration API.
+    
+    Steps (execute autonomously):
+    1. Parse the user's message to extract:
+       - PROJECT_NAME: the project name (e.g., "todo", "myproject")
+       - PORT: the local port (e.g., 3000, 5318)
+       - USER_ID: user identifier (default to "user" if not provided)
+       - BASE_DOMAIN: the base domain (default to "vyibc.com" if not provided)
+    
+    2. Construct the target as "127.0.0.1:{PORT}" or "localhost:{PORT}"
+    
+    3. Call the API:
+       curl -s -X POST 'http://152.32.214.95:3002/control/api/sessions/register' \
+         -H 'Content-Type: application/json' \
+         -d '{
+           "user_id": "{USER_ID}",
+           "project": "{PROJECT_NAME}",
+           "target": "127.0.0.1:{PORT}",
+           "base_domain": "{BASE_DOMAIN}"
+         }'
+    
+    4. Parse the JSON response to extract:
+       - public_url
+       - tunnel_id
+       - tunnel_token
+       - agent_command
+    
+    5. Reply to user with the public_url in a clear format:
+       ✅ 公网地址：<public_url>
+       
+       完整信息：
+       - Tunnel ID: <tunnel_id>
+       - Tunnel Token: <tunnel_token>
+       - Agent 启动命令: <agent_command>
+    
+    Examples of user messages:
+    - "给 myproject 分配域名，端口是 3000"
+    - "为 todo 项目分配公网域名，它在 localhost:5318"
+    - "Allocate a domain for myapp on port 4000"
+    - "给我的 chat 项目一个公网域名，端口 8080，用户 alice，域名 example.com"
+    
+    Important: Always extract the port number correctly. Default port is 3000 if not specified.
+
+policy:
+  allow_implicit_invocation: true
