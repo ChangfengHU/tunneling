@@ -26,7 +26,7 @@ Default behavior (zero-config):
 
 Optional env vars:
 - BASE_DOMAIN=vyibc.com
-- CONTROL_API_BASE=http://152.32.214.95:3002/control
+- CONTROL_API_BASE=http://152.32.214.95:18100
 - PUBLIC_SCHEME=https
 - DOMAIN_MODE=fixed|random
 - SUBDOMAIN=custom-subdomain
@@ -714,7 +714,7 @@ elif [[ -n "${cli_base_domain}" ]]; then
 else
   BASE_DOMAIN="vyibc.com"
 fi
-CONTROL_API_BASE="${CONTROL_API_BASE:-http://152.32.214.95:3002/control}"
+CONTROL_API_BASE="${CONTROL_API_BASE:-http://152.32.214.95:18100}"
 PUBLIC_SCHEME="${PUBLIC_SCHEME:-https}"
 DOMAIN_MODE="${DOMAIN_MODE:-fixed}"
 if [[ -n "${SUBDOMAIN:-}" ]]; then
