@@ -63,6 +63,8 @@ func (s *Server) handleTunnels(w http.ResponseWriter, r *http.Request) {
 		s.handleListTunnels(w, r)
 	case http.MethodPost:
 		s.handleCreateTunnel(w, r)
+	case http.MethodDelete:
+		s.handleDeleteAllTunnels(w, r)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -289,6 +291,13 @@ func (s *Server) handleSessionRegister(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
 
+	// Idempotent registration: delete any existing tunnel for the same owner+project before creating.
+	if userID != "" && projectKey != "" {
+		if err := s.supabase.DeleteTunnelsByProjectKey(ctx, userID, projectKey); err != nil {
+			s.events.Add("warn", "session.register.cleanup_failed", "", err.Error())
+		}
+	}
+
 	tunnel, err := s.supabase.CreateTunnelWithMeta(ctx, tunnelName, token, userID, projectKey)
 	if err != nil {
 		errorJSON(w, http.StatusBadGateway, err.Error())
@@ -376,6 +385,19 @@ func (s *Server) handleDeleteTunnel(w http.ResponseWriter, r *http.Request, tunn
 	}
 	s.events.Add("info", "tunnel.deleted", tunnelID, "deleted tunnel and routes")
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "tunnel_id": tunnelID})
+}
+
+func (s *Server) handleDeleteAllTunnels(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+
+	if err := s.supabase.DeleteAllTunnels(ctx); err != nil {
+		errorJSON(w, http.StatusBadGateway, err.Error())
+		s.events.Add("error", "tunnel.delete_all.failed", "", err.Error())
+		return
+	}
+	s.events.Add("info", "tunnel.delete_all", "", "all tunnels deleted")
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 func (s *Server) handleListTunnelRoutes(w http.ResponseWriter, r *http.Request, tunnelID string) {

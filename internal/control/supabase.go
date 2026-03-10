@@ -230,6 +230,25 @@ func (c *SupabaseClient) DeleteTunnelByID(ctx context.Context, tunnelID string) 
 	return c.requestJSON(ctx, http.MethodDelete, "/rest/v1/tunnel_instances", query, headers, nil, nil)
 }
 
+func (c *SupabaseClient) DeleteTunnelsByProjectKey(ctx context.Context, ownerID, projectKey string) error {
+	query := url.Values{}
+	query.Set("owner_id", "eq."+ownerID)
+	query.Set("project_key", "eq."+projectKey)
+	headers := map[string]string{
+		"Prefer": "return=minimal",
+	}
+	return c.requestJSON(ctx, http.MethodDelete, "/rest/v1/tunnel_instances", query, headers, nil, nil)
+}
+
+func (c *SupabaseClient) DeleteAllTunnels(ctx context.Context) error {
+	query := url.Values{}
+	query.Set("id", "not.is.null")
+	headers := map[string]string{
+		"Prefer": "return=minimal",
+	}
+	return c.requestJSON(ctx, http.MethodDelete, "/rest/v1/tunnel_instances", query, headers, nil, nil)
+}
+
 func (c *SupabaseClient) ListRoutesByTunnel(ctx context.Context, tunnelID string) ([]Route, error) {
 	query := url.Values{}
 	query.Set("select", "id,tunnel_id,hostname,target,is_enabled,created_at,updated_at")
