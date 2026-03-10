@@ -43,7 +43,36 @@
 bash <(curl -fsSL https://raw.githubusercontent.com/ChangfengHU/auto-domain/main/scripts/install-skill.sh)
 ```
 
-安装完成后，直接对 Copilot 说：
+运行后会出现交互菜单，选择安装到哪个 AI 工具：
+
+```
+🛠  选择要安装到哪个 AI 工具：
+
+  1) Codex        (~/.codex/skills/)
+  2) Cursor       (~/.cursor/skills/)
+  3) Claude       (~/.claude/plugins/)
+  4) Gemini       (~/.gemini/skills/)
+  5) Antigravity  (~/.gemini/antigravity/knowledge/)
+  6) Copilot      (~/.github-copilot/skills/)
+  7) 全部安装
+```
+
+也可以直接用 `--target` 参数跳过菜单：
+
+```bash
+# 安装到指定工具
+bash <(curl -fsSL https://raw.githubusercontent.com/ChangfengHU/auto-domain/main/scripts/install-skill.sh) --target codex
+bash <(curl -fsSL https://raw.githubusercontent.com/ChangfengHU/auto-domain/main/scripts/install-skill.sh) --target cursor
+bash <(curl -fsSL https://raw.githubusercontent.com/ChangfengHU/auto-domain/main/scripts/install-skill.sh) --target claude
+bash <(curl -fsSL https://raw.githubusercontent.com/ChangfengHU/auto-domain/main/scripts/install-skill.sh) --target gemini
+bash <(curl -fsSL https://raw.githubusercontent.com/ChangfengHU/auto-domain/main/scripts/install-skill.sh) --target antigravity
+bash <(curl -fsSL https://raw.githubusercontent.com/ChangfengHU/auto-domain/main/scripts/install-skill.sh) --target copilot
+
+# 一次安装到所有工具
+bash <(curl -fsSL https://raw.githubusercontent.com/ChangfengHU/auto-domain/main/scripts/install-skill.sh) --target all
+```
+
+安装完成后，直接对 AI 说：
 
 ```
 给我的 myapp 项目分配一个公网域名，它在 localhost:3000 运行
@@ -53,13 +82,13 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ChangfengHU/auto-domain/main
 
 ### 方式 1：自然语言 Skill（推荐）
 
-使用 Copilot Skill 一句话分配域名：
+使用一键安装脚本（支持 Codex / Cursor / Claude / Gemini / Antigravity / Copilot）：
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/ChangfengHU/auto-domain/main/scripts/install-skill.sh)
 ```
 
-然后对 Copilot 说：
+然后对 AI 说：
 
 ```
 给我的 myapp 项目分配一个公网域名，它在 localhost:3000 运行
