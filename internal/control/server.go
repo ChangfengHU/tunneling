@@ -461,6 +461,13 @@ func (s *Server) handleAgentRoutes(w http.ResponseWriter, r *http.Request) {
 		mapped = append(mapped, protocol.Route{Hostname: item.Hostname, Target: item.Target})
 	}
 	writeJSON(w, http.StatusOK, AgentRoutesResponse{TunnelID: tunnelID, Routes: mapped})
+	go func() {
+		updateCtx, updateCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer updateCancel()
+		if err := s.supabase.UpdateTunnelOnline(updateCtx, tunnelID); err != nil {
+			log.Printf("failed to update tunnel status online: %v", err)
+		}
+	}()
 }
 
 func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {

@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, useCallback, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import {
     Activity, Network, LogOut, Check, X, Edit2, Loader2,
     Copy, AlertCircle, Plus, Trash2, ToggleLeft, ToggleRight, RefreshCw
@@ -24,7 +24,16 @@ type TunnelInfo = {
 }
 
 export default function PortalDashboardPage() {
+    return (
+        <Suspense>
+            <PortalDashboardContent />
+        </Suspense>
+    )
+}
+
+function PortalDashboardContent() {
     const router = useRouter()
+    const searchParams = useSearchParams()
     const [tunnel, setTunnel] = useState<TunnelInfo | null>(null)
     const [routes, setRoutes] = useState<Route[]>([])
     const [loading, setLoading] = useState(true)
@@ -50,7 +59,7 @@ export default function PortalDashboardPage() {
     const fetchRoutes = useCallback(async () => {
         const { tunnelId, token } = credentials()
         if (!tunnelId) {
-            router.replace('/portal')
+            router.replace('/login')
             return
         }
         setLoading(true)
@@ -59,7 +68,7 @@ export default function PortalDashboardPage() {
             const res = await fetch(`${API}/api/portal/routes?tunnel_id=${encodeURIComponent(tunnelId)}`)
             const data = await res.json()
             if (!res.ok) {
-                if (res.status === 404) { router.replace('/portal'); return }
+                if (res.status === 404) { router.replace('/login'); return }
                 setError(data.error ?? '加载失败')
                 return
             }
@@ -73,16 +82,38 @@ export default function PortalDashboardPage() {
     }, [credentials, router])
 
     useEffect(() => {
+        const tunnelIdParam = searchParams.get('tunnel_id')
+        if (tunnelIdParam) {
+            // Came from /login server action — call login API to get token, then save to localStorage
+            fetch(`${API}/api/portal/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tunnel_id: tunnelIdParam }),
+            })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.tunnel) {
+                        localStorage.setItem('portal_tunnel_id', data.tunnel.id)
+                        localStorage.setItem('portal_token', data.tunnel.token ?? '')
+                        localStorage.setItem('portal_tunnel_name', data.tunnel.name ?? '')
+                    }
+                    // Remove query param then load routes
+                    router.replace('/portal/dashboard')
+                    fetchRoutes()
+                })
+                .catch(() => router.replace('/login'))
+            return
+        }
         const { tunnelId } = credentials()
-        if (!tunnelId) { router.replace('/portal'); return }
+        if (!tunnelId) { router.replace('/login'); return }
         fetchRoutes()
-    }, [fetchRoutes, credentials, router])
+    }, [searchParams, fetchRoutes, credentials, router])
 
     const handleLogout = () => {
         localStorage.removeItem('portal_tunnel_id')
         localStorage.removeItem('portal_token')
         localStorage.removeItem('portal_tunnel_name')
-        router.replace('/portal')
+        router.replace('/login')
     }
 
     const startEdit = (route: Route) => {

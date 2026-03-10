@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Plus, Server, XCircle, Search, Settings as SettingsIcon, Trash2, Copy, Check, Play, ShieldAlert } from 'lucide-react'
+import { Plus, Server, XCircle, Search, Settings as SettingsIcon, Trash2, Copy, Check, Play, ShieldAlert, Pencil, X } from 'lucide-react'
 import { createClient } from '@/utils/supabase/client'
 
 export default function TunnelsPage() {
@@ -10,12 +10,65 @@ export default function TunnelsPage() {
     const [loading, setLoading] = useState(true)
     const [isAdmin, setIsAdmin] = useState(false)
     const [copiedId, setCopiedId] = useState(false)
+    const [editingRouteId, setEditingRouteId] = useState<string | null>(null)
+    const [editingHostname, setEditingHostname] = useState('')
+    const [editError, setEditError] = useState('')
+    const [editSaving, setEditSaving] = useState(false)
     const supabase = createClient()
 
     const copyTunnelId = (id: string) => {
         navigator.clipboard.writeText(id)
         setCopiedId(true)
         setTimeout(() => setCopiedId(false), 1500)
+    }
+
+    const startEditRoute = (route: any) => {
+        setEditingRouteId(route.id)
+        setEditingHostname(route.hostname)
+        setEditError('')
+    }
+
+    const cancelEditRoute = () => {
+        setEditingRouteId(null)
+        setEditingHostname('')
+        setEditError('')
+    }
+
+    const saveEditRoute = async (routeId: string) => {
+        setEditSaving(true)
+        setEditError('')
+        try {
+            const res = await fetch(`/api/admin/routes/${routeId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ hostname: editingHostname }),
+            })
+            const data = await res.json()
+            if (!res.ok) {
+                setEditError(data.error ?? '保存失败')
+                return
+            }
+            // Update local state
+            setTunnels(prev => prev.map(t => ({
+                ...t,
+                tunnel_routes: t.tunnel_routes.map((r: any) =>
+                    r.id === routeId ? { ...r, hostname: data.route.hostname } : r
+                ),
+            })))
+            if (selectedTunnel) {
+                setSelectedTunnel((prev: any) => ({
+                    ...prev,
+                    tunnel_routes: prev.tunnel_routes.map((r: any) =>
+                        r.id === routeId ? { ...r, hostname: data.route.hostname } : r
+                    ),
+                }))
+            }
+            setEditingRouteId(null)
+        } catch {
+            setEditError('网络错误，请重试')
+        } finally {
+            setEditSaving(false)
+        }
     }
 
     useEffect(() => {
@@ -224,7 +277,33 @@ export default function TunnelsPage() {
                                         <tbody className="divide-y divide-gray-200">
                                             {selectedTunnel.tunnel_routes?.map((route: any) => (
                                                 <tr key={route.id} className="hover:bg-gray-50 transition-colors">
-                                                    <td className="px-4 py-3 text-sm font-medium text-indigo-600">{route.hostname}</td>
+                                                    <td className="px-4 py-3 text-sm font-medium text-indigo-600">
+                                                        {isAdmin && editingRouteId === route.id ? (
+                                                            <div className="flex flex-col gap-1">
+                                                                <div className="flex items-center gap-1">
+                                                                    <input
+                                                                        className="border border-indigo-300 rounded px-2 py-1 text-xs font-mono text-gray-800 w-full focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                                                        value={editingHostname}
+                                                                        onChange={e => { setEditingHostname(e.target.value); setEditError('') }}
+                                                                        onKeyDown={e => { if (e.key === 'Enter') saveEditRoute(route.id); if (e.key === 'Escape') cancelEditRoute() }}
+                                                                        autoFocus
+                                                                    />
+                                                                    <button onClick={() => saveEditRoute(route.id)} disabled={editSaving} className="text-emerald-600 hover:text-emerald-700 disabled:opacity-50"><Check className="w-4 h-4" /></button>
+                                                                    <button onClick={cancelEditRoute} className="text-gray-400 hover:text-gray-600"><X className="w-4 h-4" /></button>
+                                                                </div>
+                                                                {editError && <p className="text-red-500 text-xs">{editError}</p>}
+                                                            </div>
+                                                        ) : (
+                                                            <div className="flex items-center gap-1.5 group/hostname">
+                                                                <span>{route.hostname}</span>
+                                                                {isAdmin && (
+                                                                    <button onClick={() => startEditRoute(route)} className="opacity-0 group-hover/hostname:opacity-100 text-gray-400 hover:text-indigo-600 transition-opacity">
+                                                                        <Pencil className="w-3.5 h-3.5" />
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </td>
                                                     <td className="px-4 py-3 text-sm font-mono text-gray-600 bg-gray-50 rounded">{route.target}</td>
                                                     <td className="px-4 py-3 text-sm text-right">
                                                         <button className={`relative inline-flex items-center h-5 w-9 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 ${route.is_enabled ? 'bg-emerald-500' : 'bg-gray-300'}`}>

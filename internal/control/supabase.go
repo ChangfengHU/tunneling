@@ -221,6 +221,19 @@ func (c *SupabaseClient) GetRouteByHostname(ctx context.Context, hostname string
 	return rows[0], nil
 }
 
+func (c *SupabaseClient) UpdateTunnelOnline(ctx context.Context, tunnelID string) error {
+	query := url.Values{}
+	query.Set("id", "eq."+tunnelID)
+	headers := map[string]string{
+		"Prefer": "return=minimal",
+	}
+	payload := map[string]any{
+		"status":       "online",
+		"last_seen_at": time.Now().UTC().Format(time.RFC3339),
+	}
+	return c.requestJSON(ctx, http.MethodPatch, "/rest/v1/tunnel_instances", query, headers, payload, nil)
+}
+
 func (c *SupabaseClient) DeleteTunnelByID(ctx context.Context, tunnelID string) error {
 	query := url.Values{}
 	query.Set("id", "eq."+tunnelID)
