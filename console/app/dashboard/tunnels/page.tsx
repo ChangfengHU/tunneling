@@ -78,6 +78,38 @@ export default function TunnelsPage() {
         }
     }
 
+    const toggleRouteEnabled = async (routeId: string, enabled: boolean) => {
+        try {
+            const res = await fetch(`/api/portal/routes/${routeId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ is_enabled: enabled }),
+            })
+            if (!res.ok) {
+                const data = await res.json()
+                setDeleteError(data.error ?? '更新失败')
+                return
+            }
+            // Update local state
+            setTunnels(prev => prev.map(t => ({
+                ...t,
+                tunnel_routes: t.tunnel_routes.map((r: any) =>
+                    r.id === routeId ? { ...r, is_enabled: enabled } : r
+                ),
+            })))
+            if (selectedTunnel) {
+                setSelectedTunnel((prev: any) => ({
+                    ...prev,
+                    tunnel_routes: prev.tunnel_routes.map((r: any) =>
+                        r.id === routeId ? { ...r, is_enabled: enabled } : r
+                    ),
+                }))
+            }
+        } catch {
+            setDeleteError('网络错误，请重试')
+        }
+    }
+
     const deleteRoute = async (routeId: string) => {
         setDeleteError('')
         try {
@@ -483,9 +515,22 @@ export default function TunnelsPage() {
                                                     </td>
                                                     <td className="px-4 py-3 text-sm font-mono text-gray-600 bg-gray-50 rounded">{route.target}</td>
                                                     <td className="px-4 py-3 text-sm text-right flex items-center justify-end gap-2">
-                                                        <button className={`relative inline-flex items-center h-5 w-9 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 ${route.is_enabled ? 'bg-emerald-500' : 'bg-gray-300'}`}>
-                                                            <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform ${route.is_enabled ? 'translate-x-4' : 'translate-x-0'}`} />
-                                                        </button>
+                                                        {isAdmin ? (
+                                                            <button
+                                                                onClick={() => toggleRouteEnabled(route.id, !route.is_enabled)}
+                                                                className={`relative inline-flex items-center h-5 w-9 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 ${route.is_enabled ? 'bg-emerald-500' : 'bg-gray-300'}`}
+                                                                title={route.is_enabled ? '禁用路由' : '启用路由'}
+                                                            >
+                                                                <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform ${route.is_enabled ? 'translate-x-4' : 'translate-x-0'}`} />
+                                                            </button>
+                                                        ) : (
+                                                            <button
+                                                                disabled
+                                                                className={`relative inline-flex items-center h-5 w-9 rounded-full transition-colors ${route.is_enabled ? 'bg-emerald-500' : 'bg-gray-300'}`}
+                                                            >
+                                                                <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform ${route.is_enabled ? 'translate-x-4' : 'translate-x-0'}`} />
+                                                            </button>
+                                                        )}
                                                         {isAdmin && (
                                                             <button
                                                                 onClick={() => {
