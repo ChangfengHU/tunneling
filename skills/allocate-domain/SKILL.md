@@ -3,86 +3,90 @@ name: allocate-domain
 description: >
   当用户说"给项目分配域名"、"为项目申请公网域名"、"allocate domain"、
   "assign public domain"、"给我的项目一个域名" 时自动触发。
-  一句话即可为任何项目分配公网域名，但注册后需启动本地 Agent 才能生效。
+  只负责注册公网域名与返回 tunnel 信息，不负责启动项目；若服务尚未运行，只需明确告知用户后续自行启动服务和 Agent。
 ---
 
-# 快速域名分配（Allocate Domain）
+# Allocate Domain
 
-**一句话注册公网域名。Skill 只关心两件事：本地端口是多少、想用哪个二级域名。注册后需启动本地 Agent 才能生效。**
+一句话注册公网域名。这个 skill 只做两件事：
 
-## 使用场景
+- 确认要绑定的本地端口
+- 注册域名并返回 tunnel 信息
 
-- 已有本地服务在某个端口运行，想要分配公网域名
-- 想指定固定二级域名，例如 `admin.vyibc.com`
-- 同一台机器复用一个 tunnel / 一个 agent，为多个服务增加 route
-- 临时公网访问某个本地服务
+不要在这个 skill 里启动、重启、构建、修复项目。分配域名和启动项目是两件事。
+
+## 边界
+
+- 只负责域名注册和 tunnel 凭证复用
+- 不负责启动项目
+- 不负责探测健康检查
+- 不负责修复端口占用
+- 如果用户还没有启动服务，只需明确告诉他：域名已经注册，但公网访问要等本地服务和 Agent 都启动后才会生效
+
+## 执行规则
+
+1. 优先从用户输入提取：
+   - `PORT`
+   - `SUBDOMAIN`
+   - `PROJECT_NAME`
+   - 是否要求管理员覆盖注册
+2. 只有在用户没明确给端口时，才读取简单本地配置做推断：
+   - `.tunnel-port`
+   - `.env`
+   - `.env.local`
+   - `package.json` 里的端口提示
+   - 当前目录名作为 `PROJECT_NAME` / `SUBDOMAIN` 的兜底
+3. 不要运行启动脚本，不要尝试 `npm run dev`、`go run`、`restart.sh` 之类命令
+4. 直接调用注册 API
+5. 如果本机已有 `~/.tunneling/machine_state.json`，优先复用其中的 `tunnel_id` 和 `tunnel_token`
+6. 返回 `public_url`、`tunnel_id`、`tunnel_token`、`agent_command`
+
+## 何时需要用户手动处理
+
+- 如果端口无法从用户输入或简单配置中确定：
+  直接让用户明确告诉你端口
+- 如果用户问“为什么域名访问还是 502 / 404”：
+  明确说明通常是本地服务未启动，或本地 Agent 未启动
+- 如果用户要求“顺便把项目也启动起来”：
+  那不是这个 skill 的职责，应该使用单独的启动 / tunnel skill
+
+## 返回给用户的话术要求
+
+成功时要明确区分三件事：
+
+1. 域名已经注册成功
+2. 是否已经知道目标端口
+3. 公网是否依赖用户后续自己启动服务 / Agent
+
+返回格式保持简洁，类似：
+
+```text
+✅ 域名分配成功
+
+🌐 公网地址: https://myapp.vyibc.com
+🎯 本地目标: 127.0.0.1:3000
+
+后续你只需要：
+1. 确保本地服务监听 3000
+2. 启动本地 Agent
+3. 再访问上面的公网地址
+
+如果服务或 Agent 还没启动，公网通常会返回 502/404，这不影响域名注册本身。
+```
 
 ## 用法示例
 
+- `给 3000 端口分配公网域名，二级域名用 myapp`
+- `给当前项目分配域名`
+- `Allocate a domain for localhost:5318 using subdomain todo`
+- `以管理员方式把 8080 端口注册成 admin.vyibc.com`
+
+## 脚本
+
+优先使用：
+
 ```bash
-# 最简单：给定端口 + 希望的二级域名
-给我的 3000 端口分配公网域名，二级域名用 myapp
-
-# 或从项目配置里推断端口 / 二级域名
-给当前项目分配公网域名
-
-# 管理员覆盖注册
-以管理员方式把 3001 端口注册成 admin.vyibc.com
-
-# 英文方式
-Allocate a domain for localhost:5318 using subdomain myproject
+skills/allocate-domain/scripts/allocate-domain.sh
 ```
 
-## 返回信息
-
-```
-✅ 域名分配成功！
-
-🌐 公网地址：http://myproject.vyibc.com
-
-📌 Tunnel 信息：
-- Tunnel ID: 68bb4bf9-9a6f-4e21-8aa5-3cfb7dc1cfcb
-- Token: dHGAFkpuQx610ShnxCqwbBoJFGHj5y70EDv7RsN26Ds
-- Agent Command: ./agent -server ws://... -token ... -route-sync-url ... -tunnel-id ... -tunnel-token ... -admin-addr 127.0.0.1:17001 -config ~/.tunneling/machine-agent/config.json
-- 凭证文件: ~/.tunneling/machine_state.json
-
-🚀 后续步骤：
-1. 确保项目运行在 127.0.0.1:3000
-2. 启动本地 Agent（使用返回的 Agent Command）
-3. 访问 http://myproject.vyibc.com 即可公网访问
-
-提示：若未启动 Agent，公网访问通常会出现 502/404。
-
-📊 管理你的域名：
-访问 https://domain.vyibc.com/login
-输入 Tunnel ID: 68bb4bf9-9a6f-4e21-8aa5-3cfb7dc1cfcb
-登录后可以修改、启用/禁用分配的域名
-```
-
-## 触发关键词
-
-- "给项目分配域名"
-- "为项目申请公网域名"
-- "我想要一个公网域名"
-- "分配公网地址"
-- "allocate domain"
-- "assign public domain"
-- "get a public URL for my project"
-
-## 环境要求
-
-- `curl` - 用于调用 API
-- 网络连接到 https://domain.vyibc.com
-
-## 工作流程
-
-```
-用户说：给 3000 端口分配域名，二级域名用 myproject
-         ↓
-1. 优先从用户输入提取端口和二级域名；没说时再从项目基础配置推断
-2. 默认按普通用户注册；只有用户明确要求管理员覆盖时才使用管理员密钥
-3. 调用 /api/sessions/register API
-4. 解析返回的 tunnel、route 和 agent_command
-5. 把 tunnel 凭证统一保存在 ~/.tunneling/machine_state.json
-6. 返回 public_url、Tunnel 信息、Agent Command 与管理链接
-```
+脚本是注册器，不做启动动作。若旧的 machine tunnel 已失效，脚本会自动退回到新建 tunnel 再重试。

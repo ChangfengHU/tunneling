@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install-skill.sh - 一键安装 allocate-domain skill
+# install-skill.sh - install the registration-only allocate-domain skill
 #
 # 用法:
 #   bash <(curl -fsSL https://raw.githubusercontent.com/ChangfengHU/auto-domain/main/scripts/install-skill.sh)
@@ -25,6 +25,9 @@ print_done() {
   echo ""
   echo "现在你可以直接对 AI 说："
   echo "  给我的 myapp 项目分配一个公网域名，它在 localhost:3000 运行"
+  echo ""
+  echo "这个 skill 只负责注册域名，不会帮你启动项目。"
+  echo "域名注册成功后，你只需要后续自己启动本地服务和本地 Agent。"
   echo ""
   echo "也可以查看公开接入文档："
   echo "  ${DOCS_URL}"
@@ -135,6 +138,8 @@ install_copilot() {
 # ── 执行安装 ──────────────────────────────────────────────
 echo ""
 echo "🚀 安装 skill: ${SKILL_NAME}  →  ${TARGET}"
+echo ""
+echo "   mode: registration-only"
 echo ""
 
 case "$TARGET" in

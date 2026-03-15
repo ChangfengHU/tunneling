@@ -1,83 +1,22 @@
 interface:
   display_name: "Allocate Domain"
-  short_description: "一句话注册公网域名。只关注端口和二级域名，默认普通注册，复用单机单 agent。"
+  short_description: "只注册公网域名并返回 tunnel 信息，不负责启动项目。"
   default_prompt: |
-    Goal: Register a public domain for the user's local service by calling the public registration API.
-    
-    Steps (execute autonomously):
-    1. Parse the user's message to extract:
-       - PORT: the local port (e.g., 3000, 5318)
-       - SUBDOMAIN: desired fixed subdomain (e.g., "todo", "admin")
-       - PROJECT_NAME: use the project name only as a fallback when SUBDOMAIN is not provided
-       - USER_ID: user identifier (default to "user" if not provided)
-       - BASE_DOMAIN: the base domain (default to "vyibc.com" if not provided)
-       - ADMIN_MODE: only true if the user explicitly says to register as admin / override existing domain
-    
-    2. If the user did not explicitly provide PORT or SUBDOMAIN, inspect simple project config first:
-       - preferred port sources: .tunnel-port, .env, .env.local, package.json scripts / dev port hints
-       - preferred subdomain sources: .tunnel-subdomain, package.json.name, current folder name
-       Do not try to start the project. This skill is registration-only.
-    
-    3. Before calling the API, check whether ~/.tunneling/machine_state.json exists.
-       - If it exists and contains tunnel_id + tunnel_token, include both fields in the request so the same machine reuses one tunnel and one agent.
-       - If it does not exist, create a new tunnel on first registration.
+    Goal: Register a public domain for the user's local service. This skill is registration-only.
 
-    4. Call the API:
-       curl -s -X POST 'https://domain.vyibc.com/api/sessions/register' \
-         -H 'Content-Type: application/json' \
-         [-H 'Authorization: Bearer {ADMIN_KEY}' only when ADMIN_MODE is explicitly requested] \
-         -d '{
-           "user_id": "{USER_ID}",
-           "project": "{PROJECT_NAME}",
-           "subdomain": "{SUBDOMAIN}",
-           "target": "127.0.0.1:{PORT}",
-           "base_domain": "{BASE_DOMAIN}",
-           "tunnel_id": "{EXISTING_TUNNEL_ID if present}",
-           "tunnel_token": "{EXISTING_TUNNEL_TOKEN if present}"
-         }'
-    
-    5. Parse the JSON response to extract:
-       - public_url
-       - tunnel_id (from tunnel.id)
-       - tunnel_token
-       - agent_command
+    Rules:
+    1. Extract PORT, SUBDOMAIN, PROJECT_NAME, BASE_DOMAIN, and whether admin override was explicitly requested.
+    2. If PORT is missing, inspect only simple local config such as .tunnel-port, .env, .env.local, and package.json port hints.
+    3. Do not start, restart, build, or repair the project.
+    4. Reuse ~/.tunneling/machine_state.json when it contains tunnel_id and tunnel_token.
+    5. Use skills/allocate-domain/scripts/allocate-domain.sh to register the domain.
+    6. If port still cannot be inferred, ask the user for the port instead of trying to start the service.
+    7. Tell the user clearly that domain registration can succeed even when the local service is not running yet, but public access will require both the local service and the local Agent later.
 
-    6. Persist the returned tunnel credentials into ~/.tunneling/machine_state.json so future registrations on this machine reuse the same tunnel.
-    
-    7. Reply to user with a concise message:
-       ✅ 域名分配成功！
-       
-       🌐 公网地址：<public_url>
-       
-        📌 Tunnel 信息：
-        - Tunnel ID: <tunnel_id>
-        - Token: <tunnel_token>
-        - Agent Command: <agent_command>
-        - 凭证文件: ~/.tunneling/machine_state.json
-        
-        🚀 后续步骤：
-        1. 确保本地服务运行在 127.0.0.1:{PORT}
-        2. 启动本地 Agent（使用返回的 Agent Command）
-        3. 访问 <public_url> 即可公网访问
-        
-        注意：若未启动 Agent，公网访问通常会出现 502/404。
-       
-       📊 管理你的域名：
-       访问 https://domain.vyibc.com/login
-       输入 Tunnel ID: <tunnel_id>
-       登录后可以修改、启用/禁用分配的域名
-    
-    Examples of user messages:
-    - "给 3000 端口分配域名，二级域名用 myapp"
-    - "为 todo 项目分配公网域名，它在 localhost:5318"
-    - "Allocate a domain for myapp on port 4000"
-    - "以管理员方式把 8080 端口注册成 admin.vyibc.com"
-    
-    Important:
-    - Default to normal user registration.
-    - Only use admin override when the user explicitly asks for admin registration / overwrite.
-    - Do not try to start the user's project.
-    - Always prefer one machine = one tunnel = one agent.
-
+    Reply concisely with:
+    - public_url
+    - target port
+    - tunnel_id
+    - next steps: start local service if needed, start local Agent, then visit the URL
 policy:
   allow_implicit_invocation: true
