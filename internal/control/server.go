@@ -409,10 +409,11 @@ func (s *Server) handleSessionRegister(w http.ResponseWriter, r *http.Request) {
 
 	s.events.Add("info", "session.registered", tunnel.ID, fmt.Sprintf("%s => %s (%s)", route.Hostname, route.Target, userID))
 	writeJSON(w, http.StatusOK, map[string]any{
-		"tunnel":        tunnel,
-		"route":         route,
-		"public_url":    "http://" + hostname,
-		"agent_command": s.agentCommand(tunnel.ID, tunnel.Token),
+		"tunnel":         tunnel,
+		"route":          route,
+		"public_url":     "http://" + hostname,
+		"agent_command":  s.agentCommand(tunnel.ID, tunnel.Token),
+		"docker_command": s.dockerCommand(tunnel.ID, tunnel.Token),
 	})
 }
 
@@ -599,6 +600,7 @@ func (s *Server) handleTunnelCommand(w http.ResponseWriter, r *http.Request, tun
 	writeJSON(w, http.StatusOK, map[string]any{
 		"tunnel_id":        tunnel.ID,
 		"agent_command":    s.agentCommand(tunnel.ID, tunnel.Token),
+		"docker_command":   s.dockerCommand(tunnel.ID, tunnel.Token),
 		"agent_config_url": s.agentConfigURL,
 	})
 }
@@ -665,6 +667,19 @@ func (s *Server) agentCommand(tunnelID, token string) string {
 		adminAddr = "127.0.0.1:17001"
 	}
 	return fmt.Sprintf("./agent -server %s -token %s -route-sync-url %s -tunnel-id %s -tunnel-token %s -admin-addr %s -config ~/.tunneling/machine-agent/config.json", s.agentServerWS, token, s.agentConfigURL, tunnelID, token, adminAddr)
+}
+
+func (s *Server) dockerCommand(tunnelID, token string) string {
+	adminAddr := s.defaultAdminAPI
+	if adminAddr == "" {
+		adminAddr = "127.0.0.1:17001"
+	}
+	adminPort := "17001"
+	if idx := strings.LastIndex(adminAddr, ":"); idx >= 0 && idx+1 < len(adminAddr) {
+		adminPort = adminAddr[idx+1:]
+	}
+	return fmt.Sprintf("docker run -d --name tunneling-agent --restart always -p %s:17001 -v $HOME/.tunneling/machine-agent:/data registry.cn-hangzhou.aliyuncs.com/vyibc/tunneling-agent:latest -server %s -token %s -route-sync-url %s -tunnel-id %s -tunnel-token %s -admin-addr 0.0.0.0:17001 -config /data/config.json",
+		adminPort, s.agentServerWS, token, s.agentConfigURL, tunnelID, token)
 }
 
 func decodeJSON(body io.Reader, out any) error {

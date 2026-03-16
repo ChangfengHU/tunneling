@@ -4,6 +4,7 @@ import { createClient } from '@/utils/supabase/server'
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+const CONTROL_API_BASE = (process.env.CONTROL_API_BASE || 'http://127.0.0.1:18100').trim().replace(/\/$/, '')
 
 type JsonRecord = Record<string, unknown>
 
@@ -120,4 +121,8 @@ export function parseIds(value: unknown) {
     return value
         .map((item) => normalizeText(item))
         .filter(Boolean)
+}
+
+export function getControlAPIBase() {
+    return CONTROL_API_BASE
 }
