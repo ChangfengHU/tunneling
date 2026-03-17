@@ -39,6 +39,7 @@ Optional env vars:
 Agent auto-download:
 - AGENT_GITHUB_REPO=ChangfengHU/tunneling
 - AGENT_VERSION=latest (or a release tag)
+- AGENT_RELEASE_BASE=https://tunnel.vyibc.com/releases
 - AGENT_BIN=~/.tunneling/bin/agent
 - FORCE_AGENT_DOWNLOAD=1
 
@@ -525,7 +526,7 @@ ensure_agent_binary() {
 
   AGENT_GITHUB_REPO="${AGENT_GITHUB_REPO:-ChangfengHU/tunneling}"
   AGENT_VERSION="${AGENT_VERSION:-latest}"
-  AGENT_RELEASE_BASE="${AGENT_RELEASE_BASE:-https://github.com/${AGENT_GITHUB_REPO}/releases}"
+  AGENT_RELEASE_BASE="${AGENT_RELEASE_BASE:-https://tunnel.vyibc.com/releases}"
   AGENT_DIR="${AGENT_DIR:-${HOME}/.tunneling/bin}"
   mkdir -p "${AGENT_DIR}"
 
