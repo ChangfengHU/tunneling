@@ -5,7 +5,7 @@
 ## 1. 前置条件
 
 - 对外接入地址：`https://domain.vyibc.com`
-- 公开接口文档：`https://domain.vyibc.com/api-docs`
+- 公开接口文档：`https://tunnel.vyibc.com/api-docs`
 - 本地已安装 `node` / `npm` / `python3` / `curl`
 - 不要求预装 agent，`project-tunnel.sh` 会自动下载
 

@@ -209,5 +209,5 @@ Copilot 会自动：
 ## 参考链接
 
 - Skill 源代码：`skills/allocate-domain/`
-- API 文档：`https://domain.vyibc.com/api-docs`
+- API 文档：`https://tunnel.vyibc.com/api-docs`
 - Control API：`https://domain.vyibc.com/api/`

@@ -68,7 +68,7 @@ const registerResponse = `{
   "message": "session registered"
 }`
 
-const skillInstall = `bash <(curl -fsSL https://raw.githubusercontent.com/ChangfengHU/auto-domain/main/scripts/install-skill.sh)`
+const skillInstall = `bash <(curl -fsSL https://tunnel.vyibc.com/install-skill.sh)`
 const skillPrompt = `给我的 myapp 项目分配一个公网域名，它在 localhost:3000 运行`
 
 function MethodBadge({ method }: { method: string }) {

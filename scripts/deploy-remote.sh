@@ -41,6 +41,9 @@ need_cmd ssh
 
 mkdir -p "${TMP_DIR}"
 
+echo "==> sync public installer from local source"
+"${ROOT_DIR}/scripts/sync-public-install.sh"
+
 echo "==> build linux binaries locally"
 GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o "${TMP_DIR}/control" "${ROOT_DIR}/cmd/control"
 GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o "${TMP_DIR}/server" "${ROOT_DIR}/cmd/server"

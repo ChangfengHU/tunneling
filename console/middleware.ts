@@ -16,6 +16,6 @@ export const config = {
          * - control (control API, no auth required)
          * Feel free to modify this pattern to include more paths.
          */
-        '/((?!api|_next/static|_next/image|favicon.ico|control|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+        '/((?!api|_next/static|_next/image|favicon.ico|control|.*\\.(?:svg|png|jpg|jpeg|gif|webp|sh)$).*)',
     ],
 }

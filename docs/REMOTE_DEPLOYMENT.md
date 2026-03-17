@@ -149,7 +149,7 @@ curl -I http://127.0.0.1:3002
 公网访问：
 
 - 控制台：`https://domain.vyibc.com`
-- 接入文档：`https://domain.vyibc.com/api-docs`
+- 接入文档：`https://tunnel.vyibc.com/api-docs`
 
 ## 当前保留脚本
 

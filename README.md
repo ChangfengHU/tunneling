@@ -40,7 +40,7 @@
 ### ⚡ 一键安装 Skill
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/ChangfengHU/auto-domain/main/scripts/install-skill.sh)
+bash <(curl -fsSL https://tunnel.vyibc.com/install-skill.sh)
 ```
 
 运行后会出现交互菜单，选择安装到哪个 AI 工具：
@@ -61,15 +61,15 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ChangfengHU/auto-domain/main
 
 ```bash
 # 安装到指定工具
-bash <(curl -fsSL https://raw.githubusercontent.com/ChangfengHU/auto-domain/main/scripts/install-skill.sh) --target codex
-bash <(curl -fsSL https://raw.githubusercontent.com/ChangfengHU/auto-domain/main/scripts/install-skill.sh) --target cursor
-bash <(curl -fsSL https://raw.githubusercontent.com/ChangfengHU/auto-domain/main/scripts/install-skill.sh) --target claude
-bash <(curl -fsSL https://raw.githubusercontent.com/ChangfengHU/auto-domain/main/scripts/install-skill.sh) --target gemini
-bash <(curl -fsSL https://raw.githubusercontent.com/ChangfengHU/auto-domain/main/scripts/install-skill.sh) --target antigravity
-bash <(curl -fsSL https://raw.githubusercontent.com/ChangfengHU/auto-domain/main/scripts/install-skill.sh) --target copilot
+bash <(curl -fsSL https://tunnel.vyibc.com/install-skill.sh) --target codex
+bash <(curl -fsSL https://tunnel.vyibc.com/install-skill.sh) --target cursor
+bash <(curl -fsSL https://tunnel.vyibc.com/install-skill.sh) --target claude
+bash <(curl -fsSL https://tunnel.vyibc.com/install-skill.sh) --target gemini
+bash <(curl -fsSL https://tunnel.vyibc.com/install-skill.sh) --target antigravity
+bash <(curl -fsSL https://tunnel.vyibc.com/install-skill.sh) --target copilot
 
 # 一次安装到所有工具
-bash <(curl -fsSL https://raw.githubusercontent.com/ChangfengHU/auto-domain/main/scripts/install-skill.sh) --target all
+bash <(curl -fsSL https://tunnel.vyibc.com/install-skill.sh) --target all
 ```
 
 安装完成后，直接对 AI 说：
@@ -81,7 +81,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ChangfengHU/auto-domain/main
 也可以查看公开接入文档：
 
 ```text
-https://domain.vyibc.com/api-docs
+https://tunnel.vyibc.com/api-docs
 ```
 
 ---
@@ -91,7 +91,7 @@ https://domain.vyibc.com/api-docs
 使用一键安装脚本（支持 Codex / Cursor / Claude / Gemini / Antigravity / Copilot）：
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/ChangfengHU/auto-domain/main/scripts/install-skill.sh)
+bash <(curl -fsSL https://tunnel.vyibc.com/install-skill.sh)
 ```
 
 然后对 AI 说：
@@ -232,7 +232,7 @@ https://domain.vyibc.com/login
 
 | 文档 | 说明 |
 |------|------|
-| [公开接入文档](https://domain.vyibc.com/api-docs) | 免登录查看的对外接入文档，适合用户/SDK/脚本调用 |
+| [公开接入文档](https://tunnel.vyibc.com/api-docs) | 免登录查看的对外接入文档，适合用户/SDK/脚本调用 |
 | [allocate-domain Skill 使用指南](./docs/ALLOCATE_DOMAIN_GUIDE.md) | Skill 的完整使用文档、参数说明、常见问题 |
 | [项目接入指南](./docs/PROJECT_ONBOARDING.md) | 开发者集成本项目的指南 |
 | [本地使用指南](./docs/local-usage.md) | 本地开发和测试的指南 |
